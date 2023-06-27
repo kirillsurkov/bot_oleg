@@ -3,7 +3,9 @@ use crate::bot_command::core::*;
 use async_trait::async_trait;
 use base64::Engine;
 use openai::chat::*;
+use std::sync::Arc;
 use teloxide::{prelude::*, types::InputFile};
+use tokio::sync::Mutex;
 
 #[derive(serde::Deserialize)]
 struct SdResponse {
@@ -15,6 +17,7 @@ pub struct Draw;
 pub struct Args<'a> {
     pub bot: &'a Bot,
     pub msg: &'a Message,
+    pub db: Arc<Mutex<crate::DB>>,
     pub description: &'a str,
     pub nsfw: bool,
 }
@@ -43,10 +46,6 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
     }
 
     async fn execute(args: Args<'a>) -> Option<Message> {
-        println!(
-            "{}/sdapi/v1/txt2img",
-            std::env::var("SD_URL").expect("Stable diffusion API URL is missing")
-        );
         match GoogleTranslate::execute(google_translate::Args {
             to_language: "en",
             text: args.description,
@@ -59,13 +58,15 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
                         "{}/sdapi/v1/txt2img",
                         std::env::var("SD_URL").expect("Stable diffusion API URL is missing")
                     ))
-                    .json(&serde_json::json!({"steps": 20,
+                    .json(&serde_json::json!({
+                        "steps": 20,
                         "sampler_name": "Euler a",
                         "width": 512,
-                        "height": 512,
+                        "height": 768,
                         "hr_upscaler": "Latent",
                         "denoising_strength": 0.7,
-                        "prompt": text
+                        "prompt": text,
+                        "negative_prompt": "(worst quality, low quality:1.4), (zombie, sketch, interlocked fingers, comic)"
                     }))
                     .send()
                     .await
@@ -73,16 +74,23 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
                     Ok(res) => match res.json::<SdResponse>().await {
                         Ok(res) => {
                             if let Some(img) = res.images.first() {
-                                match base64::engine::general_purpose::STANDARD.decode(img)
-                                {
-                                    Ok(img) => args
-                                        .bot
-                                        .send_photo(args.msg.chat.id, InputFile::memory(img))
-                                        .has_spoiler(args.nsfw)
-                                        .reply_to_message_id(args.msg.id)
-                                        .send()
-                                        .await
-                                        .ok(),
+                                match base64::engine::general_purpose::STANDARD.decode(img) {
+                                    Ok(img) => {
+                                        match args
+                                            .bot
+                                            .send_photo(args.msg.chat.id, InputFile::memory(img))
+                                            .has_spoiler(args.nsfw)
+                                            .reply_to_message_id(args.msg.id)
+                                            .send()
+                                            .await
+                                        {
+                                            Ok(msg) => {
+                                                args.db.lock().await.add_caption(&msg, Some(&text));
+                                                Some(msg)
+                                            }
+                                            Err(_) => None,
+                                        }
+                                    }
                                     Err(err) => args
                                         .bot
                                         .send_message(

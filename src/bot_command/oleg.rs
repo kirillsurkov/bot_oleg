@@ -13,10 +13,100 @@ pub struct Args {
     pub db: Arc<Mutex<crate::DB>>,
 }
 
+#[derive(serde::Deserialize)]
+struct Caption {
+    caption: String,
+}
+
+async fn extract_caption(bot: &Bot, msg: &Message, args: &Args) {
+    if let Some(photo) = msg.photo() {
+        if let Some(photo) = photo.last() {
+            if match args.db.lock().await.get_caption(msg.chat.id.0, msg.id.0) {
+                Ok(caption) => caption.is_none(),
+                Err(_) => true,
+            } {
+                match bot.get_file(&photo.file.id).await {
+                    Ok(file) => {
+                        use base64::Engine;
+                        use teloxide::net::Download;
+                        let mut img = vec![];
+                        match bot.download_file(&file.path, &mut img).await {
+                            Ok(_) => match reqwest::Client::new()
+                                .post(format!(
+                                    "{}/sdapi/v1/interrogate",
+                                    std::env::var("SD_URL")
+                                        .expect("Stable diffusion API URL is missing"),
+                                ))
+                                .json(&serde_json::json!({
+                                    "model": "clip",
+                                    "image": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(img))
+                                }))
+                                .send()
+                                .await
+                            {
+                                Ok(res) => match res.json::<Caption>().await {
+                                    Ok(caption) => {
+                                        args.db
+                                            .lock()
+                                            .await
+                                            .add_caption(msg, Some(&caption.caption));
+                                    }
+                                    Err(err) => {
+                                        bot.send_message(
+                                            msg.chat.id,
+                                            format!("Can't parse interrogate response:\n{err}"),
+                                        )
+                                        .reply_to_message_id(msg.id)
+                                        .send()
+                                        .await
+                                        .ok();
+                                    }
+                                },
+                                Err(err) => {
+                                    bot.send_message(
+                                        msg.chat.id,
+                                        format!("Interrogate failed:\n{err}"),
+                                    )
+                                    .reply_to_message_id(msg.id)
+                                    .send()
+                                    .await
+                                    .ok();
+                                }
+                            },
+                            Err(err) => {
+                                bot.send_message(
+                                    msg.chat.id,
+                                    format!("Download image failed:\n{err}"),
+                                )
+                                .reply_to_message_id(msg.id)
+                                .send()
+                                .await
+                                .ok();
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        bot.send_message(msg.chat.id, format!("Get file failed:\n{err}"))
+                            .reply_to_message_id(msg.id)
+                            .send()
+                            .await
+                            .ok();
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[async_trait]
 impl super::Command<Args> for Oleg {
     async fn execute(bot: Bot, msg: Message, args: Args) {
         openai::set_key(std::env::var("OPENAI_TOKEN").expect("OpenAI api key is missing"));
+
+        extract_caption(&bot, &msg, &args).await;
+        if let Some(msg) = msg.reply_to_message() {
+            extract_caption(&bot, &msg, &args).await;
+        }
 
         let mut messages = vec![ChatCompletionMessage {
             role: ChatCompletionMessageRole::System,
@@ -24,6 +114,7 @@ impl super::Command<Args> for Oleg {
             name: None,
             function_call: None,
         }];
+
         messages.extend(
             args.db
                 .lock()
@@ -76,8 +167,8 @@ impl super::Command<Args> for Oleg {
             .functions([
                 oleg_command::GetTime::desc(),
                 oleg_command::Translate::desc(),
-                oleg_command::Draw::desc(),
-                oleg_command::Ban::desc(),
+                //oleg_command::Draw::desc(),
+                //oleg_command::Ban::desc(),
             ])
             .create()
             .await;
@@ -125,13 +216,16 @@ impl super::Command<Args> for Oleg {
                                 .await
                             }
                             "draw" => {
-                                let args: serde_json::Value =
+                                let cmd_args: serde_json::Value =
                                     serde_json::from_str(&function.arguments).unwrap_or_default();
                                 oleg_command::Draw::execute(oleg_command::draw::Args {
                                     bot: &bot,
                                     msg: &msg,
-                                    description: args["description"].as_str().unwrap_or_default(),
-                                    nsfw: args["nsfw"].as_bool().unwrap_or_default(),
+                                    db: args.db.clone(),
+                                    description: cmd_args["description"]
+                                        .as_str()
+                                        .unwrap_or_default(),
+                                    nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
                                 })
                                 .await
                             }

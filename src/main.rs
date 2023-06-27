@@ -74,6 +74,16 @@ async fn main() {
                                 _ => {}
                             }
                         }
+                    } else if let Some(caption) = msg.caption() {
+                        if caption.starts_with("/oleg")
+                            && (caption.len() == 5
+                                || (caption.len() > 5
+                                    && caption.chars().nth(5).unwrap().is_whitespace()))
+                        {
+                            bot_command::Oleg::execute(bot, msg, bot_command::oleg::Args { db })
+                                .await;
+                            return respond(());
+                        }
                     }
                     db.lock().await.add_message("", &msg);
                     respond(())

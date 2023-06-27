@@ -2,6 +2,8 @@ use sqlite;
 
 #[derive(Clone)]
 pub struct DBMessage {
+    pub chat_id: i64,
+    pub msg_id: i32,
     pub cause: String,
     pub sender: String,
     pub text: String,
@@ -11,6 +13,8 @@ pub struct DBMessage {
 impl From<&sqlite::Statement<'_>> for DBMessage {
     fn from(statement: &sqlite::Statement) -> Self {
         DBMessage {
+            chat_id: statement.read::<i64, _>("chat_id").unwrap(),
+            msg_id: statement.read::<i64, _>("msg_id").unwrap() as i32,
             cause: statement.read::<String, _>("cause").unwrap(),
             sender: statement
                 .read::<String, _>("sender")
@@ -34,7 +38,7 @@ impl DB {
     pub fn new() -> Self {
         let connection = sqlite::open("DB.db").unwrap();
         connection.execute("CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, cause TEXT, chat_id INTEGER, msg_id INTEGER, reply_id INTEGER, sender TEXT, message TEXT)").unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS captions(id INTEGER PRIMARY KEY, chat_id INTEGER, msg_id INTEGER, caption TEXT)").unwrap();
+        connection.execute("CREATE TABLE IF NOT EXISTS captions(chat_id INTEGER, msg_id INTEGER, caption TEXT, PRIMARY KEY(chat_id, msg_id))").unwrap();
         Self { connection }
     }
 
@@ -54,10 +58,14 @@ impl DB {
             statement.bind((5, name.as_deref())).unwrap();
         }
         {
-            let text = msg.text();
+            let text = msg.text().or(msg.caption());
             statement.bind((6, text.as_deref())).unwrap();
         }
         statement.next().unwrap();
+
+        if msg.photo().is_some() {
+            self.add_caption(msg, None);
+        }
     }
 
     pub fn get_message(&self, chat_id: i64, msg_id: i32) -> Option<DBMessage> {
@@ -73,6 +81,38 @@ impl DB {
         }
     }
 
+    pub fn add_caption(&self, msg: &teloxide::types::Message, caption: Option<&str>) {
+        if match self.get_caption(msg.chat.id.0, msg.id.0) {
+            Ok(caption) => caption,
+            Err(_) => None,
+        }
+        .is_none()
+        {
+            let mut statement = self
+                .connection
+                .prepare("INSERT INTO captions(chat_id, msg_id, caption) VALUES(?, ?, ?) ON CONFLICT(chat_id, msg_id) DO UPDATE SET caption=?")
+                .unwrap();
+            statement.bind((1, msg.chat.id.0)).unwrap();
+            statement.bind((2, msg.id.0 as i64)).unwrap();
+            statement.bind((3, caption)).unwrap();
+            statement.bind((4, caption)).unwrap();
+            statement.next().unwrap();
+        }
+    }
+
+    pub fn get_caption(&self, chat_id: i64, msg_id: i32) -> Result<Option<String>, ()> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT * FROM captions WHERE chat_id=? AND msg_id=?")
+            .unwrap();
+        statement.bind((1, chat_id)).unwrap();
+        statement.bind((2, msg_id as i64)).unwrap();
+        match statement.next() {
+            Ok(sqlite::State::Row) => Ok(statement.read::<String, _>("caption").ok()),
+            _ => Err(()),
+        }
+    }
+
     pub fn unwind_thread<Filter: Fn(&str) -> bool>(
         &self,
         msg: &teloxide::types::Message,
@@ -83,24 +123,44 @@ impl DB {
         let mut reply_id = msg.reply_to_message().and_then(|r| Some(r.id.0));
         let mut messages = vec![];
 
-        if let Some(text) = msg.text() {
-            if filter(text) {
+        let text_with_caption = |chat_id, msg_id, text| {
+            format!(
+                "{}\n{}",
+                text,
+                match self.get_caption(chat_id, msg_id) {
+                    Ok(caption) => format!(
+                        "Attached image description: {:?}",
+                        caption.unwrap_or("No".to_owned())
+                    ),
+                    Err(_) => "".to_owned(),
+                },
+            )
+            .trim()
+            .to_owned()
+        };
+
+        if let Some(text) = msg.text().or(msg.caption()) {
+            let text = text_with_caption(msg.chat.id.0, msg.id.0, text.to_owned());
+            if filter(&text) {
                 messages.push(DBMessage {
+                    chat_id: msg.chat.id.0,
+                    msg_id: msg.id.0,
                     cause: "".to_owned(),
                     sender: msg
                         .from()
                         .and_then(|u| Some(u.full_name()))
                         .unwrap_or("".to_owned()),
-                    text: text.to_owned(),
+                    text,
                     reply_id,
                 });
             }
         }
 
         while messages.len() < limit && reply_id.is_some() {
-            if let Some(reply) = self.get_message(msg.chat.id.0, reply_id.unwrap()) {
+            if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id.unwrap()) {
                 msg_id = reply_id.unwrap();
                 reply_id = reply.reply_id;
+                reply.text = text_with_caption(reply.chat_id, reply.msg_id, reply.text);
                 if filter(&reply.text) {
                     messages.push(reply);
                 }
@@ -119,12 +179,16 @@ impl DB {
             if messages.len() >= limit {
                 break;
             }
-            let message = DBMessage::from(&statement);
+            let mut message = DBMessage::from(&statement);
+            message.text = text_with_caption(message.chat_id, message.msg_id, message.text);
             if filter(&message.text) {
                 messages.push(message.clone());
                 if let Some(reply_id) = message.reply_id {
-                    if let Some(reply) = self.get_message(msg.chat.id.0, reply_id) {
-                        messages.push(reply);
+                    if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id) {
+                        reply.text = text_with_caption(reply.chat_id, reply.msg_id, reply.text);
+                        if filter(&reply.text) {
+                            messages.push(reply);
+                        }
                     }
                 }
             }
