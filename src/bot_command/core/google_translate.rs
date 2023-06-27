@@ -13,10 +13,11 @@ impl<'a> super::Core<Args<'a>, Result<String, String>> for GoogleTranslate {
         use google_translate3::api::TranslateTextRequest;
         use google_translate3::{hyper, hyper_rustls, oauth2, Translate};
 
-        let service_account_key = oauth2::read_service_account_key(
+        let service_account_key = oauth2::read_service_account_key(format!(
+            "./res/{}",
             std::env::var("GOOGLE_SERVICE_ACCOUNT_JSON")
-                .expect("Google service account JSON is missing"),
-        )
+                .expect("Google service account JSON is missing")
+        ))
         .await
         .unwrap();
         let project_id = service_account_key.project_id.clone().unwrap();
