@@ -35,8 +35,11 @@ async fn main() {
                             .await
                         }
                         BotCommand::Oleg => {
-                            bot_command::Oleg::execute(bot, msg, bot_command::oleg::Args { db })
-                                .await
+                            tokio::spawn(bot_command::Oleg::execute(
+                                bot,
+                                msg,
+                                bot_command::oleg::Args { db },
+                            ));
                         }
                         _ => {
                             bot.send_message(msg.chat.id, "Not supported yet")
