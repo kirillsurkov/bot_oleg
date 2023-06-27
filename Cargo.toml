@@ -1,0 +1,21 @@
+[package]
+name = "oleg"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+
+[dependencies]
+teloxide = { version = "0.12.2", features = ["macros"] }
+tokio = { version = "1.28.2", features = ["rt-multi-thread", "macros"] }
+dotenv = "0.15.0"
+async-trait = "0.1.68"
+openai = "1.0.0-alpha.12"
+sqlite = "0.31.0"
+futures = "0.3.28"
+serde_json = "1.0.99"
+chrono = "0.4.26"
+deepl = "0.4.2"
+google-translate3 = "5.0.2"
+serde = "1.0.164"
+reqwest = "0.11.18"
+base64 = "0.21.2"
