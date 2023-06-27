@@ -24,21 +24,19 @@ async fn main() {
                 let db = db.clone();
                 async move {
                     match cmd {
-                        BotCommand::Help => bot_command::Help::execute(&bot, &msg, ()).await,
-                        BotCommand::Rm => bot_command::Rm::execute(&bot, &msg, ()).await,
+                        BotCommand::Help => bot_command::Help::execute(bot, msg, ()).await,
+                        BotCommand::Rm => bot_command::Rm::execute(bot, msg, ()).await,
                         BotCommand::Translate { to_language, text } => {
                             bot_command::Translate::execute(
-                                &bot,
-                                &msg,
-                                bot_command::translate::Args {
-                                    to_language: &to_language,
-                                    text: &text,
-                                },
+                                bot,
+                                msg,
+                                bot_command::translate::Args { to_language, text },
                             )
                             .await
                         }
                         BotCommand::Oleg => {
-                            bot_command::Oleg::execute(&bot, &msg, bot_command::oleg::Args { db }).await
+                            bot_command::Oleg::execute(bot, msg, bot_command::oleg::Args { db })
+                                .await
                         }
                         _ => {
                             bot.send_message(msg.chat.id, "Not supported yet")
@@ -62,8 +60,12 @@ async fn main() {
                         if let Some(db_msg) = db_msg {
                             match db_msg.cause.as_str() {
                                 "oleg_a" => {
-                                    bot_command::Oleg::execute(&bot, &msg, bot_command::oleg::Args { db })
-                                        .await;
+                                    bot_command::Oleg::execute(
+                                        bot,
+                                        msg,
+                                        bot_command::oleg::Args { db },
+                                    )
+                                    .await;
                                     return respond(());
                                 }
                                 _ => {}

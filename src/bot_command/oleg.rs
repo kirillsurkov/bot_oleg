@@ -15,7 +15,7 @@ pub struct Args {
 
 #[async_trait]
 impl super::Command<Args> for Oleg {
-    async fn execute(bot: &Bot, msg: &Message, args: Args) {
+    async fn execute(bot: Bot, msg: Message, args: Args) {
         openai::set_key(std::env::var("OPENAI_TOKEN").expect("OpenAI api key is missing"));
 
         let mut messages = vec![ChatCompletionMessage {
@@ -29,11 +29,11 @@ impl super::Command<Args> for Oleg {
                 .lock()
                 .await
                 .unwind_thread(
-                    msg,
+                    &msg,
                     std::env::var("OLEG_MEMORY_SIZE")
                         .expect("Oleg memory size is missing")
                         .parse::<usize>()
-                        .expect("Can't parse Oleg memory as usize"),
+                        .expect("Can't parse Oleg memory size as usize"),
                     |text| {
                         if text.starts_with("/oleg") {
                             text[5..].trim().len() > 0
@@ -70,7 +70,7 @@ impl super::Command<Args> for Oleg {
                 }),
         );
 
-        println!("{:?}", messages);
+        println!("{:#?}", messages);
 
         let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
             .functions([
@@ -108,8 +108,8 @@ impl super::Command<Args> for Oleg {
                         match function.name.as_str() {
                             "get_time" => {
                                 oleg_command::GetTime::execute(oleg_command::get_time::Args {
-                                    bot,
-                                    msg,
+                                    bot: &bot,
+                                    msg: &msg,
                                 })
                                 .await
                             }
@@ -117,8 +117,8 @@ impl super::Command<Args> for Oleg {
                                 let args: serde_json::Value =
                                     serde_json::from_str(&function.arguments).unwrap_or_default();
                                 oleg_command::Translate::execute(oleg_command::translate::Args {
-                                    bot,
-                                    msg,
+                                    bot: &bot,
+                                    msg: &msg,
                                     to_language: args["to_language"].as_str().unwrap_or_default(),
                                     text: args["text"].as_str().unwrap_or_default(),
                                 })
@@ -128,16 +128,19 @@ impl super::Command<Args> for Oleg {
                                 let args: serde_json::Value =
                                     serde_json::from_str(&function.arguments).unwrap_or_default();
                                 oleg_command::Draw::execute(oleg_command::draw::Args {
-                                    bot,
-                                    msg,
+                                    bot: &bot,
+                                    msg: &msg,
                                     description: args["description"].as_str().unwrap_or_default(),
                                     nsfw: args["nsfw"].as_bool().unwrap_or_default(),
                                 })
                                 .await
                             }
                             "ban" => {
-                                oleg_command::Ban::execute(oleg_command::ban::Args { bot, msg })
-                                    .await
+                                oleg_command::Ban::execute(oleg_command::ban::Args {
+                                    bot: &bot,
+                                    msg: &msg,
+                                })
+                                .await
                             }
                             _ => None,
                         }

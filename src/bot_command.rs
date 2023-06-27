@@ -50,7 +50,7 @@ pub enum BotCommand {
 
 #[async_trait]
 pub trait Command<Args> {
-    async fn execute(bot: &Bot, msg: &Message, args: Args)
+    async fn execute(bot: Bot, msg: Message, args: Args)
     where
         Args: 'async_trait;
 }
