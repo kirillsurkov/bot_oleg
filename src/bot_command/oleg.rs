@@ -56,9 +56,9 @@ impl super::Command<Args> for Oleg {
                                     "{}: {}",
                                     m.sender.clone(),
                                     if m.text.starts_with("/oleg") {
-                                        m.text[5..].to_owned()
+                                        m.text[5..].trim()
                                     } else {
-                                        m.text.clone()
+                                        &m.text
                                     }
                                 )
                             }
