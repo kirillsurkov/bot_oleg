@@ -49,12 +49,20 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
         .await
         {
             Ok(img) => {
-                args.bot
+                let answer = args
+                    .bot
                     .send_photo(args.msg.chat.id, InputFile::memory(img))
                     .reply_to_message_id(args.msg.id)
                     .has_spoiler(args.nsfw)
                     .send()
-                    .await
+                    .await;
+                if let Ok(answer) = answer.as_ref() {
+                    args.db
+                        .lock()
+                        .await
+                        .add_caption(&answer, Some(args.description));
+                }
+                answer
             }
             Err(err) => {
                 args.bot

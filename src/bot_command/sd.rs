@@ -15,7 +15,7 @@ pub struct Args {
 #[async_trait]
 impl super::Command<Args> for Sd {
     async fn execute(bot: Bot, msg: Message, args: Args) {
-        match SdDraw::execute(sd_draw::Args {
+        let answer = match SdDraw::execute(sd_draw::Args {
             instance: args.sd_draw.clone(),
             description: &args.description,
             msg: &msg,
@@ -35,7 +35,13 @@ impl super::Command<Args> for Sd {
                     .send()
                     .await
             }
+        };
+
+        let db = args.db.lock().await;
+        db.add_message("sd_q", &msg);
+        if let Ok(answer) = answer {
+            db.add_message("oleg_a", &answer);
+            db.add_caption(&answer, Some(&args.description));
         }
-        .ok();
     }
 }
