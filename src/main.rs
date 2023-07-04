@@ -16,12 +16,15 @@ async fn main() {
 
     let bot = Bot::new(std::env::var("BOT_TOKEN").expect("Telegram bot api key is missing"));
     let db = Arc::new(Mutex::new(DB::new()));
+    let sd_draw = Arc::new(Mutex::new(bot_command::core::SdDraw::default()));
 
     let handler = Update::filter_message()
         .branch(dptree::entry().filter_command::<BotCommand>().endpoint({
             let db = db.clone();
+            let sd_draw = sd_draw.clone();
             move |bot: Bot, msg: Message, cmd: BotCommand| {
                 let db = db.clone();
+                let sd_draw = sd_draw.clone();
                 async move {
                     match cmd {
                         BotCommand::Help => bot_command::Help::execute(bot, msg, ()).await,
@@ -38,15 +41,28 @@ async fn main() {
                             tokio::spawn(bot_command::Oleg::execute(
                                 bot,
                                 msg,
-                                bot_command::oleg::Args { db },
+                                bot_command::oleg::Args {
+                                    sd_draw: sd_draw.clone(),
+                                    db,
+                                },
                             ));
                         }
-                        _ => {
-                            bot.send_message(msg.chat.id, "Not supported yet")
-                                .reply_to_message_id(msg.id)
-                                .await
-                                .ok();
-                        }
+                        BotCommand::Sd { description } => {
+                            tokio::spawn(bot_command::Sd::execute(
+                                bot,
+                                msg,
+                                bot_command::sd::Args {
+                                    sd_draw: sd_draw.clone(),
+                                    db,
+                                    description: description,
+                                },
+                            ));
+                        } /*_ => {
+                              bot.send_message(msg.chat.id, "Not supported yet")
+                                  .reply_to_message_id(msg.id)
+                                  .await
+                                  .ok();
+                          }*/
                     };
 
                     respond(())
@@ -55,8 +71,10 @@ async fn main() {
         }))
         .branch(dptree::entry().endpoint({
             let db = db.clone();
+            let sd_draw = sd_draw.clone();
             move |bot: Bot, msg: Message| {
                 let db = db.clone();
+                let sd_draw = sd_draw.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
                         let db_msg = db.lock().await.get_message(reply.chat.id.0, reply.id.0);
@@ -66,7 +84,10 @@ async fn main() {
                                     bot_command::Oleg::execute(
                                         bot,
                                         msg,
-                                        bot_command::oleg::Args { db },
+                                        bot_command::oleg::Args {
+                                            sd_draw: sd_draw.clone(),
+                                            db,
+                                        },
                                     )
                                     .await;
                                     return respond(());
@@ -80,8 +101,15 @@ async fn main() {
                                 || (caption.len() > 5
                                     && caption.chars().nth(5).unwrap().is_whitespace()))
                         {
-                            bot_command::Oleg::execute(bot, msg, bot_command::oleg::Args { db })
-                                .await;
+                            bot_command::Oleg::execute(
+                                bot,
+                                msg,
+                                bot_command::oleg::Args {
+                                    sd_draw: sd_draw.clone(),
+                                    db,
+                                },
+                            )
+                            .await;
                             return respond(());
                         }
                     }

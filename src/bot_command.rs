@@ -18,6 +18,9 @@ pub use oleg::Oleg;
 pub mod translate;
 pub use translate::Translate;
 
+pub mod sd;
+pub use sd::Sd;
+
 fn parse_translate(input: String) -> Result<(String, String), ParseError> {
     if let Some(cmd) = input.split_once(" ") {
         Ok((cmd.0.to_owned(), cmd.1.to_owned()))
@@ -41,7 +44,7 @@ pub enum BotCommand {
     #[command(description = "Remove message sent by bot")]
     Rm,
     #[command(description = "Run stable diffusion generation")]
-    Sd,
+    Sd { description: String },
     #[command(description = "Translate text", parse_with = parse_translate)]
     Translate { to_language: String, text: String },
     #[command(description = "Ask a question")]
