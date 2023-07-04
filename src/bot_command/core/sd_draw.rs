@@ -23,26 +23,36 @@ struct SdResponse {
 #[async_trait]
 impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
     async fn execute(args: Args<'a>) -> Result<Vec<u8>, String> {
-        if args
+        if !args
             .instance
             .lock()
             .await
             .timeouts
             .get(&args.msg.chat.id.0)
             .map(|time| {
-                time.elapsed().as_secs()
-                    >= std::env::var("SD_TIMEOUT")
-                        .expect("Stable diffusion timeout is missing")
-                        .parse::<u64>()
-                        .expect("Can't parse stable diffusion timeout as u64")
+                std::env::var("SD_TIMEOUT_LIST")
+                    .expect("Stable diffusion timeout list is missing")
+                    .split(",")
+                    .into_iter()
+                    .any(|id| {
+                        id.parse::<i64>()
+                            .expect("ID in stable diffusion timeout list can't be parsed")
+                            == args.msg.chat.id.0
+                    })
+                    && time.elapsed().as_secs()
+                        < std::env::var("SD_TIMEOUT")
+                            .expect("Stable diffusion timeout is missing")
+                            .parse::<u64>()
+                            .expect("Can't parse stable diffusion timeout as u64")
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
         {
             args.instance
                 .lock()
                 .await
                 .timeouts
                 .insert(args.msg.chat.id.0, std::time::Instant::now());
+
             match GoogleTranslate::execute(google_translate::Args {
                 to_language: "en",
                 text: args.description,
