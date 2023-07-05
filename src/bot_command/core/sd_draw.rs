@@ -23,6 +23,11 @@ struct SdResponse {
 #[async_trait]
 impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
     async fn execute(args: Args<'a>) -> Result<Vec<u8>, String> {
+        let sd_timeout = std::env::var("SD_TIMEOUT")
+            .expect("Stable diffusion timeout is missing")
+            .parse::<u64>()
+            .expect("Can't parse stable diffusion timeout as u64");
+
         if !args
             .instance
             .lock()
@@ -39,11 +44,7 @@ impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
                             .expect("ID in stable diffusion timeout list can't be parsed")
                             == args.msg.chat.id.0
                     })
-                    && time.elapsed().as_secs()
-                        < std::env::var("SD_TIMEOUT")
-                            .expect("Stable diffusion timeout is missing")
-                            .parse::<u64>()
-                            .expect("Can't parse stable diffusion timeout as u64")
+                    && time.elapsed().as_secs() < sd_timeout
             })
             .unwrap_or(false)
         {
@@ -98,8 +99,19 @@ impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
                 Err(err) => Err(format!("No response from translation API:\n{err}")),
             }
         } else {
+            use strfmt::*;
+            let timeout = sd_timeout
+                - args
+                    .instance
+                    .lock()
+                    .await
+                    .timeouts
+                    .get(&args.msg.chat.id.0)
+                    .unwrap()
+                    .elapsed()
+                    .as_secs();
             Err(match std::env::var("SD_TIMEOUT_MESSAGE") {
-                Ok(msg) => msg,
+                Ok(msg) => strfmt!(&msg, timeout,).unwrap(),
                 Err(_) => "Stable diffusion timeout message is missing".to_owned(),
             })
         }

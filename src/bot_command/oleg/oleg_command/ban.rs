@@ -24,12 +24,15 @@ impl<'a> OlegCommand<Args<'a>> for Ban {
         }
     }
 
-    async fn execute(args: Args<'a>) -> Option<Message> {
-        args.bot
-            .send_message(args.msg.chat.id, "/ban")
-            .reply_to_message_id(args.msg.id)
-            .send()
-            .await
-            .ok()
+    async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
+        (
+            args.bot
+                .send_message(args.msg.chat.id, "/ban")
+                .reply_to_message_id(args.msg.id)
+                .send()
+                .await
+                .ok(),
+            None,
+        )
     }
 }

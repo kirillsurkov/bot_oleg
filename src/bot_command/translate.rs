@@ -1,7 +1,6 @@
+use super::core::*;
 use async_trait::async_trait;
 use teloxide::prelude::*;
-
-use super::core::*;
 
 pub struct Translate;
 

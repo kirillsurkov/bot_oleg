@@ -21,6 +21,9 @@ pub use translate::Translate;
 pub mod sd;
 pub use sd::Sd;
 
+pub mod what;
+pub use what::What;
+
 fn parse_translate(input: String) -> Result<(String, String), ParseError> {
     if let Some(cmd) = input.split_once(" ") {
         Ok((cmd.0.to_owned(), cmd.1.to_owned()))
@@ -45,6 +48,8 @@ pub enum BotCommand {
     Rm,
     #[command(description = "Run stable diffusion generation")]
     Sd { description: String },
+    #[command(description = "Get photo description")]
+    What,
     #[command(description = "Translate text", parse_with = parse_translate)]
     Translate { to_language: String, text: String },
     #[command(description = "Ask a question")]

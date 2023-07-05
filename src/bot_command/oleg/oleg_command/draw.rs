@@ -40,7 +40,7 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
         }
     }
 
-    async fn execute(args: Args<'a>) -> Option<Message> {
+    async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
         match SdDraw::execute(sd_draw::Args {
             instance: args.sd_draw.clone(),
             description: args.description,
@@ -55,23 +55,21 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
                     .reply_to_message_id(args.msg.id)
                     .has_spoiler(args.nsfw)
                     .send()
-                    .await;
-                if let Ok(answer) = answer.as_ref() {
+                    .await
+                    .ok();
+                if let Some(photo) = answer
+                    .as_ref()
+                    .and_then(|a| a.photo())
+                    .and_then(|p| p.last())
+                {
                     args.db
                         .lock()
                         .await
-                        .add_caption(&answer, Some(args.description));
+                        .add_caption(&photo.file.id, Some(args.description));
                 }
-                answer
+                (answer, None)
             }
-            Err(err) => {
-                args.bot
-                    .send_message(args.msg.chat.id, err)
-                    .reply_to_message_id(args.msg.id)
-                    .send()
-                    .await
-            }
+            Err(err) => (None, Some(err))
         }
-        .ok()
     }
 }

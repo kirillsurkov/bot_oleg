@@ -41,7 +41,9 @@ impl super::Command<Args> for Sd {
         db.add_message("sd_q", &msg);
         if let Ok(answer) = answer {
             db.add_message("oleg_a", &answer);
-            db.add_caption(&answer, Some(&args.description));
+            if let Some(photo) = answer.photo().and_then(|p| p.last()) {
+                db.add_caption(&photo.file.id, Some(&args.description));
+            }
         }
     }
 }

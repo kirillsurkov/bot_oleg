@@ -1,13 +1,29 @@
 use sqlite;
 
 #[derive(Clone)]
+pub struct FunctionReq {
+    pub name: String,
+    pub args: String,
+}
+
+#[derive(Clone)]
+pub struct FunctionRes {
+    pub name: String,
+    pub res: String,
+}
+
+#[derive(Clone)]
 pub struct DBMessage {
     pub chat_id: i64,
     pub msg_id: i32,
     pub cause: String,
-    pub sender: String,
-    pub text: String,
+    pub sender_id: Option<u64>,
     pub reply_id: Option<i32>,
+    pub file_id: Option<String>,
+    pub function_req: Option<FunctionReq>,
+    pub function_res: Option<FunctionRes>,
+    pub sender: Option<String>,
+    pub text: Option<String>,
 }
 
 impl From<&sqlite::Statement<'_>> for DBMessage {
@@ -16,16 +32,22 @@ impl From<&sqlite::Statement<'_>> for DBMessage {
             chat_id: statement.read::<i64, _>("chat_id").unwrap(),
             msg_id: statement.read::<i64, _>("msg_id").unwrap() as i32,
             cause: statement.read::<String, _>("cause").unwrap(),
-            sender: statement
-                .read::<String, _>("sender")
-                .unwrap_or("".to_owned()),
-            text: statement
-                .read::<String, _>("message")
-                .unwrap_or("".to_owned()),
+            sender_id: statement
+                .read::<i64, _>("sender_id")
+                .map(|id| id as u64)
+                .ok(),
             reply_id: statement
                 .read::<i64, _>("reply_id")
                 .and_then(|id| Ok(id as i32))
                 .ok(),
+            file_id: statement
+                .read::<String, _>("file_id")
+                .and_then(|id| Ok(id))
+                .ok(),
+            function_req: None,
+            function_res: None,
+            sender: statement.read::<String, _>("sender").ok(),
+            text: statement.read::<String, _>("text").ok(),
         }
     }
 }
@@ -37,34 +59,74 @@ pub struct DB {
 impl DB {
     pub fn new() -> Self {
         let connection = sqlite::open("DB.db").unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS messages(id INTEGER PRIMARY KEY, cause TEXT, chat_id INTEGER, msg_id INTEGER, reply_id INTEGER, sender TEXT, message TEXT)").unwrap();
-        connection.execute("CREATE TABLE IF NOT EXISTS captions(chat_id INTEGER, msg_id INTEGER, caption TEXT, PRIMARY KEY(chat_id, msg_id))").unwrap();
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS messages(
+                    chat_id INTEGER,
+                    msg_id INTEGER,
+                    cause TEXT,
+                    sender_id INTEGER,
+                    reply_id INTEGER,
+                    file_id TEXT,
+                    sender TEXT,
+                    text TEXT,
+                    PRIMARY KEY(chat_id, msg_id)
+                )",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS captions(
+                    file_id TEXT PRIMARY KEY,
+                    caption TEXT
+                )",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "CREATE TABLE IF NOT EXISTS functions(
+                    id INTEGER PRIMARY KEY,
+                    chat_id INTEGER,
+                    msg_id INTEGER,
+                    name TEXT,
+                    req TEXT,
+                    res TEXT
+                )",
+            )
+            .unwrap();
         Self { connection }
     }
 
     pub fn add_message(&self, cause: &str, msg: &teloxide::types::Message) {
         let mut statement = self
             .connection
-            .prepare("INSERT INTO messages(cause, chat_id, msg_id, reply_id, sender, message) VALUES(?, ?, ?, ?, ?, ?)")
+            .prepare("INSERT INTO messages VALUES(?, ?, ?, ?, ?, ?, ?, ?)")
             .unwrap();
-        statement.bind((1, cause)).unwrap();
-        statement.bind((2, msg.chat.id.0)).unwrap();
-        statement.bind((3, msg.id.0 as i64)).unwrap();
+        statement.bind((1, msg.chat.id.0)).unwrap();
+        statement.bind((2, msg.id.0 as i64)).unwrap();
+        statement.bind((3, cause)).unwrap();
         statement
-            .bind((4, msg.reply_to_message().and_then(|r| Some(r.id.0 as i64))))
+            .bind((4, msg.from().map(|m| m.id.0 as i64)))
             .unwrap();
-        {
-            let name = msg.from().and_then(|u| Some(u.full_name()));
-            statement.bind((5, name.as_deref())).unwrap();
-        }
-        {
-            let text = msg.text().or(msg.caption());
-            statement.bind((6, text.as_deref())).unwrap();
-        }
+        statement
+            .bind((5, msg.reply_to_message().map(|r| r.id.0 as i64)))
+            .unwrap();
+        statement
+            .bind((
+                6,
+                msg.photo()
+                    .and_then(|p| p.last())
+                    .map(|p| p.file.id.as_str()),
+            ))
+            .unwrap();
+        statement
+            .bind((7, msg.from().map(|u| u.full_name()).as_deref()))
+            .unwrap();
+        statement.bind((8, msg.text().or(msg.caption()))).unwrap();
         statement.next().unwrap();
 
-        if msg.photo().is_some() {
-            self.add_caption(msg, None);
+        if let Some(photo) = msg.photo().and_then(|p| p.last()) {
+            self.add_caption(&photo.file.id, None);
         }
     }
 
@@ -81,8 +143,8 @@ impl DB {
         }
     }
 
-    pub fn add_caption(&self, msg: &teloxide::types::Message, caption: Option<&str>) {
-        if match self.get_caption(msg.chat.id.0, msg.id.0) {
+    pub fn add_caption(&self, file_id: &str, caption: Option<&str>) {
+        if match self.get_caption(file_id) {
             Ok(caption) => caption,
             Err(_) => None,
         }
@@ -90,27 +152,82 @@ impl DB {
         {
             let mut statement = self
                 .connection
-                .prepare("INSERT INTO captions(chat_id, msg_id, caption) VALUES(?, ?, ?) ON CONFLICT(chat_id, msg_id) DO UPDATE SET caption=?")
+                .prepare("INSERT INTO captions(file_id, caption) VALUES(?, ?) ON CONFLICT(file_id) DO UPDATE SET caption=?")
                 .unwrap();
-            statement.bind((1, msg.chat.id.0)).unwrap();
-            statement.bind((2, msg.id.0 as i64)).unwrap();
+            statement.bind((1, file_id)).unwrap();
+            statement.bind((2, caption)).unwrap();
             statement.bind((3, caption)).unwrap();
-            statement.bind((4, caption)).unwrap();
             statement.next().unwrap();
         }
     }
 
-    pub fn get_caption(&self, chat_id: i64, msg_id: i32) -> Result<Option<String>, ()> {
+    pub fn get_caption(&self, file_id: &str) -> Result<Option<String>, ()> {
         let mut statement = self
             .connection
-            .prepare("SELECT * FROM captions WHERE chat_id=? AND msg_id=?")
+            .prepare("SELECT * FROM captions WHERE file_id=?")
             .unwrap();
-        statement.bind((1, chat_id)).unwrap();
-        statement.bind((2, msg_id as i64)).unwrap();
+        statement.bind((1, file_id)).unwrap();
         match statement.next() {
             Ok(sqlite::State::Row) => Ok(statement.read::<String, _>("caption").ok()),
             _ => Err(()),
         }
+    }
+
+    pub fn add_function(
+        &self,
+        msg: &teloxide::types::Message,
+        name: &str,
+        req: Option<&str>,
+        res: Option<&str>,
+    ) {
+        let mut statement = self
+            .connection
+            .prepare("INSERT INTO functions(chat_id, msg_id, name, req, res) VALUES(?, ?, ?, ?, ?)")
+            .unwrap();
+        statement.bind((1, msg.chat.id.0)).unwrap();
+        statement.bind((2, msg.id.0 as i64)).unwrap();
+        statement.bind((3, name)).unwrap();
+        statement.bind((4, req)).unwrap();
+        statement.bind((5, res)).unwrap();
+        statement.next().unwrap();
+    }
+
+    pub fn get_functions(&self, chat_id: i64, msg_id: i32) -> Vec<DBMessage> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT * FROM functions WHERE chat_id=? and msg_id=? ORDER BY id DESC")
+            .unwrap();
+        statement.bind((1, chat_id)).unwrap();
+        statement.bind((2, msg_id as i64)).unwrap();
+        let mut functions = vec![];
+        while let Ok(sqlite::State::Row) = statement.next() {
+            let name = statement.read::<String, _>("name").unwrap();
+            let req = statement.read::<String, _>("req").map(|r| FunctionReq {
+                name: name.clone(),
+                args: r,
+            });
+            let res = statement.read::<String, _>("res").map(|r| FunctionRes {
+                name: name.clone(),
+                res: r,
+            });
+            functions.push(DBMessage {
+                chat_id: statement.read::<i64, _>("chat_id").unwrap(),
+                msg_id: statement.read::<i64, _>("msg_id").unwrap() as i32,
+                cause: req
+                    .as_ref()
+                    .map(|_| "oleg_a")
+                    .unwrap_or("oleg_f")
+                    .to_owned(),
+                sender_id: None,
+                reply_id: None,
+                file_id: None,
+                function_req: req.ok(),
+                function_res: res.ok(),
+                sender: None,
+                text: None,
+            });
+        }
+        functions
     }
 
     pub fn unwind_thread<Filter: Fn(&str) -> bool>(
@@ -123,35 +240,38 @@ impl DB {
         let mut reply_id = msg.reply_to_message().and_then(|r| Some(r.id.0));
         let mut messages = vec![];
 
-        let text_with_caption = |chat_id, msg_id, text| {
-            format!(
-                "{}\n{}",
-                text,
-                match self.get_caption(chat_id, msg_id) {
-                    Ok(caption) => format!(
-                        "Attached image description: {:?}",
-                        caption.unwrap_or("No".to_owned())
-                    ),
-                    Err(_) => "".to_owned(),
-                },
-            )
+        let text_with_id = |file_id: Option<&str>, text: &str| {
+            match file_id {
+                Some(file_id) => format!("{text}\n###ID###\n{{\"file_id\":{file_id}}}",),
+                None => text.to_owned(),
+            }
             .trim()
             .to_owned()
         };
 
         if let Some(text) = msg.text().or(msg.caption()) {
-            let text = text_with_caption(msg.chat.id.0, msg.id.0, text.to_owned());
+            let text = text_with_id(
+                msg.photo()
+                    .and_then(|p| p.last())
+                    .map(|p| p.file.id.as_str()),
+                text,
+            );
             if filter(&text) {
+                messages.extend(self.get_functions(msg.chat.id.0, msg.id.0));
                 messages.push(DBMessage {
                     chat_id: msg.chat.id.0,
                     msg_id: msg.id.0,
                     cause: "".to_owned(),
-                    sender: msg
-                        .from()
-                        .and_then(|u| Some(u.full_name()))
-                        .unwrap_or("".to_owned()),
-                    text,
+                    sender_id: msg.from().map(|u| u.id.0),
                     reply_id,
+                    file_id: msg
+                        .photo()
+                        .and_then(|p| p.last())
+                        .map(|p| p.file.id.clone()),
+                    function_req: None,
+                    function_res: None,
+                    sender: msg.from().and_then(|u| Some(u.full_name())),
+                    text: Some(text),
                 });
             }
         }
@@ -160,8 +280,10 @@ impl DB {
             if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id.unwrap()) {
                 msg_id = reply_id.unwrap();
                 reply_id = reply.reply_id;
-                reply.text = text_with_caption(reply.chat_id, reply.msg_id, reply.text);
-                if filter(&reply.text) {
+                let text = reply.text.unwrap_or_default();
+                reply.text = Some(text_with_id(reply.file_id.as_deref(), &text));
+                if filter(&text) {
+                    messages.extend(self.get_functions(reply.chat_id, reply.msg_id));
                     messages.push(reply);
                 }
             } else {
@@ -180,13 +302,17 @@ impl DB {
                 break;
             }
             let mut message = DBMessage::from(&statement);
-            message.text = text_with_caption(message.chat_id, message.msg_id, message.text);
-            if filter(&message.text) {
+            let text = message.text.unwrap_or_default();
+            message.text = Some(text_with_id(message.file_id.as_deref(), &text));
+            if filter(&text) {
+                messages.extend(self.get_functions(message.chat_id, message.msg_id));
                 messages.push(message.clone());
                 if let Some(reply_id) = message.reply_id {
                     if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id) {
-                        reply.text = text_with_caption(reply.chat_id, reply.msg_id, reply.text);
-                        if filter(&reply.text) {
+                        let text = reply.text.unwrap_or_default();
+                        reply.text = Some(text_with_id(reply.file_id.as_deref(), &text));
+                        if filter(&text) {
+                            messages.extend(self.get_functions(reply.chat_id, reply.msg_id));
                             messages.push(reply);
                         }
                     }

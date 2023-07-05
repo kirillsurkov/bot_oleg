@@ -54,15 +54,13 @@ async fn main() {
                                 bot_command::sd::Args {
                                     sd_draw: sd_draw.clone(),
                                     db,
-                                    description: description,
+                                    description,
                                 },
                             ));
-                        } /*_ => {
-                              bot.send_message(msg.chat.id, "Not supported yet")
-                                  .reply_to_message_id(msg.id)
-                                  .await
-                                  .ok();
-                          }*/
+                        }
+                        BotCommand::What => {
+                            bot_command::What::execute(bot, msg, bot_command::what::Args { db }).await;
+                        }
                     };
 
                     respond(())

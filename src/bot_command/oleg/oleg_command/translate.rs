@@ -36,10 +36,10 @@ impl<'a> OlegCommand<Args<'a>> for Translate {
         }
     }
 
-    async fn execute(args: Args<'a>) -> Option<Message> {
-        args.bot
-            .send_message(
-                args.msg.chat.id,
+    async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
+        (
+            None,
+            Some(
                 match GoogleTranslate::execute(google_translate::Args {
                     to_language: args.to_language,
                     text: args.text,
@@ -49,10 +49,7 @@ impl<'a> OlegCommand<Args<'a>> for Translate {
                     Ok(text) => text,
                     Err(err) => format!("Failed to translate:\n{err}"),
                 },
-            )
-            .reply_to_message_id(args.msg.id)
-            .send()
-            .await
-            .ok()
+            ),
+        )
     }
 }

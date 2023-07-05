@@ -14,88 +14,174 @@ pub struct Args {
     pub db: Arc<Mutex<crate::DB>>,
 }
 
-#[derive(serde::Deserialize)]
-struct Caption {
-    caption: String,
-}
+async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Message>, String> {
+    let mut messages = vec![ChatCompletionMessage {
+        role: ChatCompletionMessageRole::System,
+        content: Some(std::env::var("OLEG_PROMPT").expect("Oleg prompt is missing")),
+        name: None,
+        function_call: None,
+    }];
 
-async fn extract_caption(bot: &Bot, msg: &Message, args: &Args) {
-    if let Some(photo) = msg.photo() {
-        if let Some(photo) = photo.last() {
-            if match args.db.lock().await.get_caption(msg.chat.id.0, msg.id.0) {
-                Ok(caption) => caption.is_none(),
-                Err(_) => true,
-            } {
-                match bot.get_file(&photo.file.id).await {
-                    Ok(file) => {
-                        use base64::Engine;
-                        use teloxide::net::Download;
-                        let mut img = vec![];
-                        match bot.download_file(&file.path, &mut img).await {
-                            Ok(_) => match reqwest::Client::new()
-                                .post(format!(
-                                    "{}/sdapi/v1/interrogate",
-                                    std::env::var("SD_URL")
-                                        .expect("Stable diffusion API URL is missing"),
-                                ))
-                                .json(&serde_json::json!({
-                                    "model": "clip",
-                                    "image": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(img))
-                                }))
-                                .send()
-                                .await
-                            {
-                                Ok(res) => match res.json::<Caption>().await {
-                                    Ok(caption) => {
-                                        args.db
-                                            .lock()
-                                            .await
-                                            .add_caption(msg, Some(&caption.caption));
-                                    }
-                                    Err(err) => {
-                                        bot.send_message(
-                                            msg.chat.id,
-                                            format!("Can't parse interrogate response:\n{err}"),
-                                        )
-                                        .reply_to_message_id(msg.id)
-                                        .send()
-                                        .await
-                                        .ok();
-                                    }
-                                },
-                                Err(err) => {
-                                    bot.send_message(
-                                        msg.chat.id,
-                                        format!("Interrogate failed:\n{err}"),
-                                    )
-                                    .reply_to_message_id(msg.id)
-                                    .send()
-                                    .await
-                                    .ok();
+    messages.extend(
+        args.db
+            .lock()
+            .await
+            .unwind_thread(
+                msg,
+                std::env::var("OLEG_MEMORY_SIZE")
+                    .expect("Oleg memory size is missing")
+                    .parse::<usize>()
+                    .expect("Can't parse Oleg memory size as usize"),
+                |text| {
+                    if text.starts_with("/oleg") {
+                        text[5..].trim().len() > 0
+                    } else {
+                        text.len() > 0
+                    }
+                },
+            )
+            .iter()
+            .map(|m| {
+                let role = match m.cause.as_str() {
+                    "oleg_a" => ChatCompletionMessageRole::Assistant,
+                    "oleg_f" => ChatCompletionMessageRole::Function,
+                    _ => ChatCompletionMessageRole::User,
+                };
+                ChatCompletionMessage {
+                    role,
+                    content: match role {
+                        ChatCompletionMessageRole::User => m.text.as_ref().map(|text| {
+                            format!(
+                                "{}: {}",
+                                m.sender.clone().unwrap().clone(),
+                                if text.starts_with("/oleg") {
+                                    text[5..].trim()
+                                } else {
+                                    &text
                                 }
-                            },
-                            Err(err) => {
-                                bot.send_message(
-                                    msg.chat.id,
-                                    format!("Download image failed:\n{err}"),
-                                )
-                                .reply_to_message_id(msg.id)
-                                .send()
-                                .await
-                                .ok();
-                            }
+                            )
+                        }),
+                        ChatCompletionMessageRole::Function => {
+                            m.function_res.as_ref().map(|f| f.res.clone())
                         }
-                    }
-                    Err(err) => {
-                        bot.send_message(msg.chat.id, format!("Get file failed:\n{err}"))
-                            .reply_to_message_id(msg.id)
-                            .send()
-                            .await
-                            .ok();
-                    }
+                        _ => m.text.clone(),
+                    },
+                    name: m
+                        .function_req
+                        .as_ref()
+                        .map(|f| f.name.clone())
+                        .or(m.function_res.as_ref().map(|f| f.name.clone())),
+                    function_call: m.function_req.as_ref().map(|f| ChatCompletionFunctionCall {
+                        name: f.name.clone(),
+                        arguments: f.args.clone(),
+                    }),
                 }
+            }),
+    );
+
+    println!("{:#?}", messages);
+
+    let functions = [
+        oleg_command::GetTime::desc(),
+        oleg_command::Translate::desc(),
+        oleg_command::Draw::desc(),
+        oleg_command::Recognize::desc(),
+        //oleg_command::Ban::desc(),
+    ];
+    let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
+        .functions(functions.clone())
+        .create()
+        .await;
+
+    println!("{:?}", completion);
+
+    match completion {
+        Ok(completion) => {
+            let completion = completion.choices.first().unwrap().message.clone();
+            if let Some(text) = completion.content.as_ref() {
+                Ok(bot
+                    .send_message(
+                        msg.chat.id,
+                        text.split_once("###ID###")
+                            .map(|s| s.0)
+                            .or(Some(&text))
+                            .unwrap(),
+                    )
+                    .reply_to_message_id(msg.id)
+                    .send()
+                    .await
+                    .ok())
+            } else if let Some(function) = completion.function_call {
+                args.db.lock().await.add_function(
+                    msg,
+                    &function.name,
+                    Some(&function.arguments),
+                    None,
+                );
+                let (answer, function_response) = match function.name.as_str() {
+                    "get_time" => {
+                        let args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::GetTime::execute(oleg_command::get_time::Args {
+                            offset_m: args["offset_minutes"].as_i64().unwrap_or_default() as i32,
+                            offset_h: args["offset_hours"].as_i64().unwrap_or_default() as i32,
+                        })
+                        .await
+                    }
+                    "translate" => {
+                        let args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::Translate::execute(oleg_command::translate::Args {
+                            bot,
+                            msg,
+                            to_language: args["to_language"].as_str().unwrap_or_default(),
+                            text: args["text"].as_str().unwrap_or_default(),
+                        })
+                        .await
+                    }
+                    "draw" => {
+                        let cmd_args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::Draw::execute(oleg_command::draw::Args {
+                            bot,
+                            msg,
+                            sd_draw: args.sd_draw.clone(),
+                            db: args.db.clone(),
+                            description: cmd_args["description"].as_str().unwrap_or_default(),
+                            nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
+                        })
+                        .await
+                    }
+                    "ban" => oleg_command::Ban::execute(oleg_command::ban::Args { bot, msg }).await,
+                    "recognize" => {
+                        let cmd_args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::Recognize::execute(oleg_command::recognize::Args {
+                            bot,
+                            msg,
+                            db: args.db.clone(),
+                            file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
+                        })
+                        .await
+                    }
+                    _ => (None, None),
+                };
+                if let Some(function_response) = function_response {
+                    args.db.lock().await.add_function(
+                        msg,
+                        &function.name,
+                        None,
+                        Some(&function_response),
+                    );
+                    Ok(None)
+                } else {
+                    Ok(answer)
+                }
+            } else {
+                Err("Empty response".to_owned())
             }
         }
+        Err(err) => Err(format!("Completion error:\n{err}")),
     }
 }
 
@@ -104,149 +190,28 @@ impl super::Command<Args> for Oleg {
     async fn execute(bot: Bot, msg: Message, args: Args) {
         openai::set_key(std::env::var("OPENAI_TOKEN").expect("OpenAI api key is missing"));
 
-        extract_caption(&bot, &msg, &args).await;
-        if let Some(msg) = msg.reply_to_message() {
-            extract_caption(&bot, &msg, &args).await;
-        }
+        let mut max_iter = 5;
 
-        let mut messages = vec![ChatCompletionMessage {
-            role: ChatCompletionMessageRole::System,
-            content: Some(std::env::var("OLEG_PROMPT").expect("Oleg prompt is missing")),
-            name: None,
-            function_call: None,
-        }];
+        let answer = loop {
+            if max_iter <= 0 {
+                break None;
+            }
+            max_iter -= 1;
 
-        messages.extend(
-            args.db
-                .lock()
-                .await
-                .unwind_thread(
-                    &msg,
-                    std::env::var("OLEG_MEMORY_SIZE")
-                        .expect("Oleg memory size is missing")
-                        .parse::<usize>()
-                        .expect("Can't parse Oleg memory size as usize"),
-                    |text| {
-                        if text.starts_with("/oleg") {
-                            text[5..].trim().len() > 0
-                        } else {
-                            text.len() > 0
-                        }
-                    },
-                )
-                .iter()
-                .map(|m| {
-                    let role = match m.cause.as_str() {
-                        "oleg_a" => ChatCompletionMessageRole::Assistant,
-                        _ => ChatCompletionMessageRole::User,
-                    };
-                    ChatCompletionMessage {
-                        role,
-                        content: Some(match role {
-                            ChatCompletionMessageRole::User => {
-                                format!(
-                                    "{}: {}",
-                                    m.sender.clone(),
-                                    if m.text.starts_with("/oleg") {
-                                        m.text[5..].trim()
-                                    } else {
-                                        &m.text
-                                    }
-                                )
-                            }
-                            _ => m.text.clone(),
-                        }),
-                        name: None,
-                        function_call: None,
-                    }
-                }),
-        );
-
-        println!("{:#?}", messages);
-
-        let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
-            .functions([
-                oleg_command::GetTime::desc(),
-                oleg_command::Translate::desc(),
-                oleg_command::Draw::desc(),
-                //oleg_command::Ban::desc(),
-            ])
-            .create()
-            .await;
-
-        println!("{:?}", completion);
-
-        let answer = match completion {
-            Ok(completion) => {
-                let completion = completion.choices.first().unwrap().message.clone();
-                if let Some(text) = completion.content {
-                    bot.send_message(
-                        msg.chat.id,
-                        if text.starts_with("Олег:") {
-                            &text["Олег:".len()..]
-                        } else if text.starts_with("Oleg:") {
-                            &text["Oleg:".len()..]
-                        } else {
-                            &text[..]
-                        }
-                        .to_owned(),
-                    )
-                    .reply_to_message_id(msg.id)
-                    .send()
-                    .await
-                    .ok()
-                } else if let Some(function) = completion.function_call {
-                    match function.name.as_str() {
-                        "get_time" => {
-                            oleg_command::GetTime::execute(oleg_command::get_time::Args {
-                                bot: &bot,
-                                msg: &msg,
-                            })
-                            .await
-                        }
-                        "translate" => {
-                            let args: serde_json::Value =
-                                serde_json::from_str(&function.arguments).unwrap_or_default();
-                            oleg_command::Translate::execute(oleg_command::translate::Args {
-                                bot: &bot,
-                                msg: &msg,
-                                to_language: args["to_language"].as_str().unwrap_or_default(),
-                                text: args["text"].as_str().unwrap_or_default(),
-                            })
-                            .await
-                        }
-                        "draw" => {
-                            let cmd_args: serde_json::Value =
-                                serde_json::from_str(&function.arguments).unwrap_or_default();
-                            oleg_command::Draw::execute(oleg_command::draw::Args {
-                                bot: &bot,
-                                msg: &msg,
-                                sd_draw: args.sd_draw.clone(),
-                                db: args.db.clone(),
-                                description: cmd_args["description"].as_str().unwrap_or_default(),
-                                nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
-                            })
-                            .await
-                        }
-                        "ban" => {
-                            oleg_command::Ban::execute(oleg_command::ban::Args {
-                                bot: &bot,
-                                msg: &msg,
-                            })
-                            .await
-                        }
-                        _ => None,
-                    }
-                } else {
-                    None
+            match get_answer(&bot, &msg, &args).await {
+                Ok(answer) => match answer {
+                    Some(answer) => break Some(answer),
+                    None => continue,
+                },
+                Err(err) => {
+                    break bot
+                        .send_message(msg.chat.id, err)
+                        .reply_to_message_id(msg.id)
+                        .send()
+                        .await
+                        .ok()
                 }
             }
-            Err(err) => bot
-                .send_message(msg.chat.id, format!("Completion error:\n{err}"))
-                .reply_to_message_id(msg.id)
-                .send()
-                .await
-                .ok(),
         };
 
         let db = args.db.lock().await;
