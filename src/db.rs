@@ -284,9 +284,11 @@ impl DB {
             if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id.unwrap()) {
                 msg_id = reply_id.unwrap();
                 reply_id = reply.reply_id;
-                let text = reply.text.unwrap_or_default();
-                reply.text = Some(text_with_id(reply.file_id.as_deref(), &text));
-                if filter(&text) {
+                reply.text = Some(text_with_id(
+                    reply.file_id.as_deref(),
+                    &reply.text.unwrap_or_default(),
+                ));
+                if filter(reply.text.as_ref().unwrap()) {
                     messages.extend(self.get_functions(reply.chat_id, reply.msg_id));
                     messages.push(reply);
                 }
@@ -306,16 +308,20 @@ impl DB {
                 break;
             }
             let mut message = DBMessage::from(&statement);
-            let text = message.text.unwrap_or_default();
-            message.text = Some(text_with_id(message.file_id.as_deref(), &text));
-            if filter(&text) {
+            message.text = Some(text_with_id(
+                message.file_id.as_deref(),
+                &message.text.unwrap_or_default(),
+            ));
+            if filter(message.text.as_ref().unwrap()) {
                 messages.extend(self.get_functions(message.chat_id, message.msg_id));
                 messages.push(message.clone());
                 if let Some(reply_id) = message.reply_id {
                     if let Some(mut reply) = self.get_message(msg.chat.id.0, reply_id) {
-                        let text = reply.text.unwrap_or_default();
-                        reply.text = Some(text_with_id(reply.file_id.as_deref(), &text));
-                        if filter(&text) {
+                        reply.text = Some(text_with_id(
+                            reply.file_id.as_deref(),
+                            &reply.text.unwrap_or_default(),
+                        ));
+                        if filter(reply.text.as_ref().unwrap()) {
                             messages.extend(self.get_functions(reply.chat_id, reply.msg_id));
                             messages.push(reply);
                         }
