@@ -1,6 +1,6 @@
 use super::OlegCommand;
 use async_trait::async_trait;
-use chrono::{Offset, Utc};
+use chrono::Utc;
 use openai::chat::*;
 use teloxide::prelude::*;
 
