@@ -200,8 +200,12 @@ impl DB {
         statement.bind((1, chat_id)).unwrap();
         statement.bind((2, msg_id as i64)).unwrap();
         let mut functions = vec![];
+        let re = regex::Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap();
         while let Ok(sqlite::State::Row) = statement.next() {
             let name = statement.read::<String, _>("name").unwrap();
+            if !re.is_match(&name) {
+                continue;
+            }
             let req = statement.read::<String, _>("req").map(|r| FunctionReq {
                 name: name.clone(),
                 args: r,
