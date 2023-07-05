@@ -86,7 +86,8 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
         oleg_command::Translate::desc(),
         oleg_command::Draw::desc(),
         oleg_command::Recognize::desc(),
-        //oleg_command::Ban::desc(),
+        oleg_command::Search::desc(),
+        oleg_command::ExchangeRates::desc(),
     ];
     let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
         .functions(functions.clone())
@@ -161,6 +162,22 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                             msg,
                             db: args.db.clone(),
                             file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
+                        })
+                        .await
+                    }
+                    "search" => {
+                        let cmd_args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::Search::execute(oleg_command::search::Args {
+                            query: cmd_args["query"].as_str().unwrap_or_default(),
+                        })
+                        .await
+                    }
+                    "exchange_rates" => {
+                        let cmd_args: serde_json::Value =
+                            serde_json::from_str(&function.arguments).unwrap_or_default();
+                        oleg_command::ExchangeRates::execute(oleg_command::exchange_rates::Args {
+                            base: cmd_args["base"].as_str().unwrap_or_default(),
                         })
                         .await
                     }

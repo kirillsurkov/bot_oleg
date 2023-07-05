@@ -17,6 +17,12 @@ pub use ban::Ban;
 pub mod recognize;
 pub use recognize::Recognize;
 
+pub mod search;
+pub use search::Search;
+
+pub mod exchange_rates;
+pub use exchange_rates::ExchangeRates;
+
 #[async_trait]
 pub trait OlegCommand<Args> {
     fn desc() -> ChatCompletionFunctionDefinition;

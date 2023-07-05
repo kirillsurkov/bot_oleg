@@ -24,6 +24,12 @@ pub use sd::Sd;
 pub mod what;
 pub use what::What;
 
+pub mod find;
+pub use find::Find;
+
+pub mod rates;
+pub use rates::Rates;
+
 fn parse_translate(input: String) -> Result<(String, String), ParseError> {
     if let Some(cmd) = input.split_once(" ") {
         Ok((cmd.0.to_owned(), cmd.1.to_owned()))
@@ -52,6 +58,8 @@ pub enum BotCommand {
     What,
     #[command(description = "Translate text", parse_with = parse_translate)]
     Translate { to_language: String, text: String },
+    #[command(description = "Web search")]
+    Find { query: String },
     #[command(description = "Ask a question")]
     Oleg,
 }

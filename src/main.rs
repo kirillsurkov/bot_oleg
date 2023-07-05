@@ -59,7 +59,12 @@ async fn main() {
                             ));
                         }
                         BotCommand::What => {
-                            bot_command::What::execute(bot, msg, bot_command::what::Args { db }).await;
+                            bot_command::What::execute(bot, msg, bot_command::what::Args { db })
+                                .await;
+                        }
+                        BotCommand::Find { query } => {
+                            bot_command::Find::execute(bot, msg, bot_command::find::Args { query })
+                                .await
                         }
                     };
 
@@ -75,22 +80,29 @@ async fn main() {
                 let sd_draw = sd_draw.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
-                        let db_msg = db.lock().await.get_message(reply.chat.id.0, reply.id.0);
-                        if let Some(db_msg) = db_msg {
-                            match db_msg.cause.as_str() {
-                                "oleg_a" => {
-                                    bot_command::Oleg::execute(
-                                        bot,
-                                        msg,
-                                        bot_command::oleg::Args {
-                                            sd_draw: sd_draw.clone(),
-                                            db,
-                                        },
-                                    )
-                                    .await;
-                                    return respond(());
+                        if msg
+                            .text()
+                            .or(msg.caption())
+                            .map(|t| !t.starts_with("/q"))
+                            .unwrap_or(true)
+                        {
+                            let db_msg = db.lock().await.get_message(reply.chat.id.0, reply.id.0);
+                            if let Some(db_msg) = db_msg {
+                                match db_msg.cause.as_str() {
+                                    "oleg_a" => {
+                                        bot_command::Oleg::execute(
+                                            bot,
+                                            msg,
+                                            bot_command::oleg::Args {
+                                                sd_draw: sd_draw.clone(),
+                                                db,
+                                            },
+                                        )
+                                        .await;
+                                        return respond(());
+                                    }
+                                    _ => {}
                                 }
-                                _ => {}
                             }
                         }
                     } else if let Some(caption) = msg.caption() {
