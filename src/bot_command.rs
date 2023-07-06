@@ -27,14 +27,17 @@ pub use what::What;
 pub mod find;
 pub use find::Find;
 
+// BotCommands derive macro's `parse_with` attribute
+// expects a function which uses `String` as an argument.
+#[allow(clippy::needless_pass_by_value)]
 fn parse_translate(input: String) -> Result<(String, String), ParseError> {
-    if let Some(cmd) = input.split_once(" ") {
+    if let Some(cmd) = input.split_once(' ') {
         Ok((cmd.0.to_owned(), cmd.1.to_owned()))
     } else {
         Err(ParseError::TooFewArguments {
             expected: 2,
             found: 1,
-            message: "".to_owned(),
+            message: String::new(),
         })
     }
 }

@@ -69,7 +69,7 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
                 }
                 (answer, None)
             }
-            Err(err) => (None, Some(err))
+            Err(err) => (None, Some(err)),
         }
     }
 }
