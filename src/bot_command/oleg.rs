@@ -91,107 +91,102 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
         .await;
 
     println!("{completion:?}");
+    let completion = completion.map_err(|err| format!("Completion error:\n{err}"))?;
 
-    match completion {
-        Ok(completion) => {
-            let completion = completion.choices.first().unwrap().message.clone();
-            if let Some(text) = completion.content.as_ref() {
-                Ok(bot
-                    .send_message(
-                        msg.chat.id,
-                        text.split_once("###ID###").map_or(&text[..], |s| s.0),
-                    )
-                    .reply_to_message_id(msg.id)
-                    .send()
-                    .await
-                    .ok())
-            } else if let Some(function) = completion.function_call {
-                args.db.lock().await.add_function(
-                    msg,
-                    &function.name,
-                    Some(&function.arguments),
-                    None,
-                );
-                let (answer, function_response) = match function.name.as_str() {
-                    "get_time" => {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::GetTime::execute(oleg_command::get_time::Args {
-                            offset_m: args["offset_minutes"].as_i64().unwrap_or_default() as i32,
-                            offset_h: args["offset_hours"].as_i64().unwrap_or_default() as i32,
-                        })
-                        .await
-                    }
-                    "translate" => {
-                        let args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::Translate::execute(oleg_command::translate::Args {
-                            bot,
-                            msg,
-                            to_language: args["to_language"].as_str().unwrap_or_default(),
-                            text: args["text"].as_str().unwrap_or_default(),
-                        })
-                        .await
-                    }
-                    "draw" => {
-                        let cmd_args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::Draw::execute(oleg_command::draw::Args {
-                            bot,
-                            msg,
-                            sd_draw: args.sd_draw.clone(),
-                            db: args.db.clone(),
-                            description: cmd_args["description"].as_str().unwrap_or_default(),
-                            nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
-                        })
-                        .await
-                    }
-                    "ban" => oleg_command::Ban::execute(oleg_command::ban::Args { bot, msg }).await,
-                    "recognize" => {
-                        let cmd_args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::Recognize::execute(oleg_command::recognize::Args {
-                            bot,
-                            msg,
-                            db: args.db.clone(),
-                            file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
-                        })
-                        .await
-                    }
-                    "search" => {
-                        let cmd_args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::Search::execute(oleg_command::search::Args {
-                            query: cmd_args["query"].as_str().unwrap_or_default(),
-                        })
-                        .await
-                    }
-                    "exchange_rates" => {
-                        let cmd_args: serde_json::Value =
-                            serde_json::from_str(&function.arguments).unwrap_or_default();
-                        oleg_command::ExchangeRates::execute(oleg_command::exchange_rates::Args {
-                            base: cmd_args["base"].as_str().unwrap_or_default(),
-                        })
-                        .await
-                    }
-                    _ => (None, None),
-                };
-                if let Some(function_response) = function_response {
-                    args.db.lock().await.add_function(
-                        msg,
-                        &function.name,
-                        None,
-                        Some(&function_response),
-                    );
-                    Ok(None)
-                } else {
-                    Ok(answer)
-                }
-            } else {
-                Err("Empty response".to_owned())
-            }
+    let completion = completion.choices[0].message.clone();
+    if let Some(text) = completion.content.as_ref() {
+        return Ok(bot
+            .send_message(
+                msg.chat.id,
+                text.split_once("###ID###").map_or(&text[..], |s| s.0),
+            )
+            .reply_to_message_id(msg.id)
+            .send()
+            .await
+            .ok());
+    }
+
+    let Some(function) = completion.function_call else {
+        return Err("Empty response".to_owned());
+    };
+
+    args.db
+        .lock()
+        .await
+        .add_function(msg, &function.name, Some(&function.arguments), None);
+    let (answer, function_response) = match function.name.as_str() {
+        "get_time" => {
+            let args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::GetTime::execute(oleg_command::get_time::Args {
+                offset_m: args["offset_minutes"].as_i64().unwrap_or_default() as i32,
+                offset_h: args["offset_hours"].as_i64().unwrap_or_default() as i32,
+            })
+            .await
         }
-        Err(err) => Err(format!("Completion error:\n{err}")),
+        "translate" => {
+            let args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::Translate::execute(oleg_command::translate::Args {
+                bot,
+                msg,
+                to_language: args["to_language"].as_str().unwrap_or_default(),
+                text: args["text"].as_str().unwrap_or_default(),
+            })
+            .await
+        }
+        "draw" => {
+            let cmd_args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::Draw::execute(oleg_command::draw::Args {
+                bot,
+                msg,
+                sd_draw: args.sd_draw.clone(),
+                db: args.db.clone(),
+                description: cmd_args["description"].as_str().unwrap_or_default(),
+                nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
+            })
+            .await
+        }
+        "ban" => oleg_command::Ban::execute(oleg_command::ban::Args { bot, msg }).await,
+        "recognize" => {
+            let cmd_args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::Recognize::execute(oleg_command::recognize::Args {
+                bot,
+                msg,
+                db: args.db.clone(),
+                file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
+            })
+            .await
+        }
+        "search" => {
+            let cmd_args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::Search::execute(oleg_command::search::Args {
+                query: cmd_args["query"].as_str().unwrap_or_default(),
+            })
+            .await
+        }
+        "exchange_rates" => {
+            let cmd_args: serde_json::Value =
+                serde_json::from_str(&function.arguments).unwrap_or_default();
+            oleg_command::ExchangeRates::execute(oleg_command::exchange_rates::Args {
+                base: cmd_args["base"].as_str().unwrap_or_default(),
+            })
+            .await
+        }
+        _ => (None, None),
+    };
+
+    if let Some(function_response) = function_response {
+        args.db
+            .lock()
+            .await
+            .add_function(msg, &function.name, None, Some(&function_response));
+        Ok(None)
+    } else {
+        Ok(answer)
     }
 }
 
