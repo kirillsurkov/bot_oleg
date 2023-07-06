@@ -21,7 +21,7 @@ impl super::Command<Args> for Translate {
             .await
             {
                 Ok(text) => text,
-                Err(err) => format!("Failed to translate:\n{err}"),
+                Err(err) => format!("Failed to translate:\n{err:#}"),
             },
         )
         .reply_to_message_id(msg.id)
