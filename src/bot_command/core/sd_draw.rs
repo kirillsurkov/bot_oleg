@@ -1,8 +1,10 @@
-use super::*;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use base64::Engine;
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
+
+use super::*;
 
 #[derive(Default)]
 pub struct SdDraw {
@@ -21,98 +23,84 @@ struct SdResponse {
 }
 
 #[async_trait]
-impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
-    async fn execute(args: Args<'a>) -> Result<Vec<u8>, String> {
+impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
+    async fn execute(args: Args<'a>) -> anyhow::Result<Vec<u8>> {
         let sd_timeout = std::env::var("SD_TIMEOUT")
             .expect("Stable diffusion timeout is missing")
             .parse::<u64>()
             .expect("Can't parse stable diffusion timeout as u64");
 
-        if !args
+        let sd_timeout_list = std::env::var("SD_TIMEOUT_LIST")
+            .expect("Stable diffusion timeout list is missing")
+            .split(',')
+            .map(|id| {
+                id.parse::<i64>()
+                    .expect("ID in stable diffusion timeout list can't be parsed")
+            })
+            .collect::<Vec<_>>();
+
+        if args
             .instance
             .lock()
             .await
             .timeouts
             .get(&args.msg.chat.id.0)
-            .map(|time| {
-                std::env::var("SD_TIMEOUT_LIST")
-                    .expect("Stable diffusion timeout list is missing")
-                    .split(',')
-                    .any(|id| {
-                        id.parse::<i64>()
-                            .expect("ID in stable diffusion timeout list can't be parsed")
-                            == args.msg.chat.id.0
-                    })
+            .map_or(false, |time| {
+                sd_timeout_list.contains(&args.msg.chat.id.0)
                     && time.elapsed().as_secs() < sd_timeout
             })
-            .unwrap_or(false)
         {
-            args.instance
-                .lock()
-                .await
-                .timeouts
-                .insert(args.msg.chat.id.0, std::time::Instant::now());
-
-            match GoogleTranslate::execute(google_translate::Args {
-                to_language: "en",
-                text: args.description,
-            })
-            .await
-            {
-                Ok(text) => {
-                    match reqwest::Client::new()
-                        .post(format!(
-                            "{}/sdapi/v1/txt2img",
-                            std::env::var("SD_URL").expect("Stable diffusion API URL is missing")
-                        ))
-                        .json(&serde_json::json!({
-                            "steps": 25,
-                            "cfg_scale": 10.0,
-                            "sampler_name": "Euler a",
-                            "width": 512,
-                            "height": 1024,
-                            "prompt": format!("(masterpiece, best quality), {}", text),
-                            "negative_prompt": "EasyNegativeV2"
-                        }))
-                        .send()
-                        .await
-                    {
-                        Ok(res) => match res.json::<SdResponse>().await {
-                            Ok(res) => {
-                                if let Some(img) = res.images.first() {
-                                    match base64::engine::general_purpose::STANDARD.decode(img) {
-                                        Ok(img) => Ok(img),
-                                        Err(err) => {
-                                            Err(format!("Invalid base64 from SD API:\n{err}"))
-                                        }
-                                    }
-                                } else {
-                                    Err("Empty response from SD API".to_owned())
-                                }
-                            }
-                            Err(err) => Err(format!("Invalid response from SD API:\n{err}")),
-                        },
-                        Err(err) => Err(format!("No response from SD API:\n{err}")),
-                    }
-                }
-                Err(err) => Err(format!("No response from translation API:\n{err:#}")),
-            }
-        } else {
             use strfmt::*;
-            let timeout = sd_timeout
-                - args
-                    .instance
-                    .lock()
-                    .await
-                    .timeouts
-                    .get(&args.msg.chat.id.0)
-                    .unwrap()
-                    .elapsed()
-                    .as_secs();
-            Err(match std::env::var("SD_TIMEOUT_MESSAGE") {
-                Ok(msg) => strfmt!(&msg, timeout,).unwrap(),
-                Err(_) => "Stable diffusion timeout message is missing".to_owned(),
-            })
+            let chat_timeout = args.instance.lock().await.timeouts[&args.msg.chat.id.0]
+                .elapsed()
+                .as_secs();
+            let timeout = sd_timeout - chat_timeout;
+            return Err(match std::env::var("SD_TIMEOUT_MESSAGE") {
+                Ok(msg) => anyhow!(strfmt!(&msg, timeout).unwrap()),
+                Err(_) => anyhow!("Stable diffusion timeout message is missing"),
+            });
         }
+
+        args.instance
+            .lock()
+            .await
+            .timeouts
+            .insert(args.msg.chat.id.0, std::time::Instant::now());
+
+        let translated_prompt = GoogleTranslate::execute(google_translate::Args {
+            to_language: "en",
+            text: args.description,
+        })
+        .await
+        .context("no response from translation API")?;
+
+        let SdResponse { images } = reqwest::Client::new()
+            .post(format!(
+                "{}/sdapi/v1/txt2img",
+                std::env::var("SD_URL").expect("Stable diffusion API URL is missing")
+            ))
+            .json(&serde_json::json!({
+                "steps": 25,
+                "cfg_scale": 10.0,
+                "sampler_name": "Euler a",
+                "width": 512,
+                "height": 1024,
+                "prompt": format!("(masterpiece, best quality), {}", translated_prompt),
+                "negative_prompt": "EasyNegativeV2"
+            }))
+            .send()
+            .await
+            .context("no response from SD API")?
+            .json::<SdResponse>()
+            .await
+            .context("invalid response from SD API")?;
+
+        let image = images
+            .first()
+            .ok_or_else(|| anyhow!("Empty response from SD API"))?;
+        let res = base64::engine::general_purpose::STANDARD
+            .decode(image)
+            .context("Invalid base64 from SD API")?;
+        Ok(res)
     }
 }
