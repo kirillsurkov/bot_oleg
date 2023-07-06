@@ -46,7 +46,7 @@ impl<'a> OlegCommand<Args<'a>> for Recognize {
                 .await
                 {
                     Ok(caption) => caption,
-                    Err(err) => err,
+                    Err(err) => format!("{err:#}"),
                 },
             ),
         )
