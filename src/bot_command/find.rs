@@ -15,7 +15,7 @@ impl super::Command<Args> for Find {
             msg.chat.id,
             match BingSearch::execute(bing_search::Args { query: &args.query }).await {
                 Ok(text) => text,
-                Err(err) => format!("Failed to translate:\n{err}"),
+                Err(err) => format!("Failed to translate:\n{err:#}"),
             },
         )
         .reply_to_message_id(msg.id)

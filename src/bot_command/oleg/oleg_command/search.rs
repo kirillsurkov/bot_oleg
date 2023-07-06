@@ -35,7 +35,7 @@ impl<'a> OlegCommand<Args<'a>> for Search {
             Some(
                 match BingSearch::execute(bing_search::Args { query: args.query }).await {
                     Ok(text) => text,
-                    Err(err) => format!("Web search failed:\n{err}"),
+                    Err(err) => format!("Web search failed:\n{err:#}"),
                 },
             ),
         )

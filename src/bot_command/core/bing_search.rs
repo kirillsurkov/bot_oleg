@@ -1,7 +1,6 @@
+use anyhow::Context;
 use async_trait::async_trait;
-
 pub struct BingSearch;
-
 pub struct Args<'a> {
     pub query: &'a str,
 }
@@ -24,26 +23,24 @@ pub struct Response {
 }
 
 #[async_trait]
-impl<'a> super::Core<Args<'a>, Result<String, String>> for BingSearch {
-    async fn execute(args: Args<'a>) -> Result<String, String> {
+impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for BingSearch {
+    async fn execute(args: Args<'a>) -> anyhow::Result<String> {
         let key = std::env::var("BING_API_KEY").expect("Bing API key is missing");
-        match reqwest::Client::default()
-            .get(
-                reqwest::Url::parse_with_params(
-                    "https://api.bing.microsoft.com/v7.0/search",
-                    &[("q", args.query), ("textFormat", "HTML")],
-                )
-                .unwrap(),
-            )
+        let url = reqwest::Url::parse_with_params(
+            "https://api.bing.microsoft.com/v7.0/search",
+            &[("q", args.query), ("textFormat", "HTML")],
+        )
+        .unwrap();
+        let response = reqwest::Client::default()
+            .get(url)
             .header("Ocp-Apim-Subscription-Key", key)
             .send()
             .await
-        {
-            Ok(response) => match response.json::<Response>().await {
-                Ok(response) => Ok(serde_json::to_string(&response.web_pages.value[0..3]).unwrap()),
-                Err(err) => Err(format!("Can't parse response:\n{err}")),
-            },
-            Err(err) => Err(format!("Request failed:\n{err}")),
-        }
+            .context("Request failed")?;
+        let response = response
+            .json::<Response>()
+            .await
+            .context("Can't parse response")?;
+        Ok(serde_json::to_string(&response.web_pages.value[0..3]).unwrap())
     }
 }
