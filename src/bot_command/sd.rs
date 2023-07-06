@@ -30,7 +30,7 @@ impl super::Command<Args> for Sd {
                     .await
             }
             Err(err) => {
-                bot.send_message(msg.chat.id, err)
+                bot.send_message(msg.chat.id, format!("{err:#}"))
                     .reply_to_message_id(msg.id)
                     .send()
                     .await
