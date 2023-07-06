@@ -31,7 +31,7 @@ impl super::Command<Args> for What {
         .await
         {
             Ok(caption) => bot.send_message(msg.chat.id, caption),
-            Err(err) => bot.send_message(msg.chat.id, err),
+            Err(err) => bot.send_message(msg.chat.id, format!("{err:#}")),
         }
         .reply_to_message_id(msg.id)
         .send()
