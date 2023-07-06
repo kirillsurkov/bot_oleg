@@ -37,7 +37,7 @@ impl<'a> OlegCommand<Args<'a>> for ExchangeRates {
                     .await
                 {
                     Ok(response) => serde_json::to_string(&response).unwrap(),
-                    Err(err) => format!("Get exchange rates failed:\n{err}"),
+                    Err(err) => format!("Get exchange rates failed:\n{err:#}"),
                 },
             ),
         )
