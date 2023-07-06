@@ -37,8 +37,7 @@ impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
             .map(|time| {
                 std::env::var("SD_TIMEOUT_LIST")
                     .expect("Stable diffusion timeout list is missing")
-                    .split(",")
-                    .into_iter()
+                    .split(',')
                     .any(|id| {
                         id.parse::<i64>()
                             .expect("ID in stable diffusion timeout list can't be parsed")

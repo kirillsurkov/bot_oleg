@@ -33,10 +33,10 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                     .parse::<usize>()
                     .expect("Can't parse Oleg memory size as usize"),
                 |text| {
-                    if text.starts_with("/oleg") {
-                        text[5..].trim().len() > 0
+                    if let Some(command) = text.strip_prefix("/oleg") {
+                        !command.trim().is_empty()
                     } else {
-                        text.len() > 0
+                        !text.is_empty()
                     }
                 },
             )
@@ -53,12 +53,8 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                         ChatCompletionMessageRole::User => m.text.as_ref().map(|text| {
                             format!(
                                 "{}: {}",
-                                m.sender.clone().unwrap().clone(),
-                                if text.starts_with("/oleg") {
-                                    text[5..].trim()
-                                } else {
-                                    &text
-                                }
+                                m.sender.clone().unwrap(),
+                                text.strip_prefix("/oleg").map_or(&text[..], |s| s.trim()),
                             )
                         }),
                         ChatCompletionMessageRole::Function => {
@@ -79,7 +75,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             }),
     );
 
-    println!("{:#?}", messages);
+    println!("{messages:#?}");
 
     let functions = [
         oleg_command::GetTime::desc(),
@@ -94,7 +90,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
         .create()
         .await;
 
-    println!("{:?}", completion);
+    println!("{completion:?}");
 
     match completion {
         Ok(completion) => {
@@ -103,10 +99,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 Ok(bot
                     .send_message(
                         msg.chat.id,
-                        text.split_once("###ID###")
-                            .map(|s| s.0)
-                            .or(Some(&text))
-                            .unwrap(),
+                        text.split_once("###ID###").map_or(&text[..], |s| s.0),
                     )
                     .reply_to_message_id(msg.id)
                     .send()

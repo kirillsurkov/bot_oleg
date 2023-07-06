@@ -21,13 +21,7 @@ struct Caption {
 impl super::Core<Args, Result<String, String>> for SdWhat {
     async fn execute(args: Args) -> Result<String, String> {
         if let Some(file_id) = args.file_id {
-            let caption = args
-                .db
-                .lock()
-                .await
-                .get_caption(&file_id)
-                .ok()
-                .flatten();
+            let caption = args.db.lock().await.get_caption(&file_id).ok().flatten();
             match caption {
                 Some(caption) => Ok(caption),
                 None => match args.bot.get_file(&file_id).await {

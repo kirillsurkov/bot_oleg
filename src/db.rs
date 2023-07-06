@@ -1,5 +1,3 @@
-use sqlite;
-
 #[derive(Clone)]
 pub struct FunctionReq {
     pub name: String,
@@ -38,12 +36,9 @@ impl From<&sqlite::Statement<'_>> for DBMessage {
                 .ok(),
             reply_id: statement
                 .read::<i64, _>("reply_id")
-                .and_then(|id| Ok(id as i32))
+                .map(|id| id as i32)
                 .ok(),
-            file_id: statement
-                .read::<String, _>("file_id")
-                .and_then(|id| Ok(id))
-                .ok(),
+            file_id: statement.read::<String, _>("file_id").ok(),
             function_req: None,
             function_res: None,
             sender: statement.read::<String, _>("sender").ok(),
@@ -109,7 +104,7 @@ impl DB {
             .bind((4, msg.from().map(|m| m.id.0 as i64)))
             .unwrap();
         statement
-            .bind((5, msg.reply_to_message().map(|r| r.id.0 as i64)))
+            .bind((5, msg.reply_to_message().map(|r| i64::from(r.id.0))))
             .unwrap();
         statement
             .bind((
@@ -241,7 +236,7 @@ impl DB {
         filter: Filter,
     ) -> Vec<DBMessage> {
         let mut msg_id = msg.id.0;
-        let mut reply_id = msg.reply_to_message().and_then(|r| Some(r.id.0));
+        let mut reply_id = msg.reply_to_message().map(|r| r.id.0);
         let mut messages = vec![];
 
         let text_with_id = |file_id: Option<&str>, text: &str| {
@@ -265,7 +260,7 @@ impl DB {
                 messages.push(DBMessage {
                     chat_id: msg.chat.id.0,
                     msg_id: msg.id.0,
-                    cause: "".to_owned(),
+                    cause: String::new(),
                     sender_id: msg.from().map(|u| u.id.0),
                     reply_id,
                     file_id: msg
@@ -274,7 +269,7 @@ impl DB {
                         .map(|p| p.file.id.clone()),
                     function_req: None,
                     function_res: None,
-                    sender: msg.from().and_then(|u| Some(u.full_name())),
+                    sender: msg.from().map(|u| u.full_name()),
                     text: Some(text),
                 });
             }
@@ -302,7 +297,7 @@ impl DB {
             .prepare("SELECT * from messages WHERE chat_id=? AND msg_id<? ORDER BY msg_id DESC")
             .unwrap();
         statement.bind((1, msg.chat.id.0)).unwrap();
-        statement.bind((2, msg_id as i64)).unwrap();
+        statement.bind((2, i64::from(msg_id))).unwrap();
         while let Ok(sqlite::State::Row) = statement.next() {
             if messages.len() >= limit {
                 break;

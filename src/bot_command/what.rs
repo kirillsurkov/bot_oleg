@@ -20,12 +20,13 @@ impl super::Command<Args> for What {
                 .reply_to_message()
                 .map(|r| r.photo())
                 .and(msg.reply_to_message()))
-            .or(Some(&msg))
-            .unwrap();
+            .unwrap_or(&msg);
         match SdWhat::execute(sd_what::Args {
             db: args.db,
             bot: bot.clone(),
-            file_id: msg.photo().and_then(|p| p.last().map(|p| p.file.id.clone())),
+            file_id: msg
+                .photo()
+                .and_then(|p| p.last().map(|p| p.file.id.clone())),
         })
         .await
         {

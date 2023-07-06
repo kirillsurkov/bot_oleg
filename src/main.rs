@@ -83,8 +83,7 @@ async fn main() {
                         if msg
                             .text()
                             .or(msg.caption())
-                            .map(|t| !t.starts_with("/q"))
-                            .unwrap_or(true)
+                            .map_or(true, |t| !t.starts_with("/q"))
                         {
                             let db_msg = db.lock().await.get_message(reply.chat.id.0, reply.id.0);
                             if let Some(db_msg) = db_msg {
