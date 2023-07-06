@@ -41,35 +41,36 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
     }
 
     async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
-        match SdDraw::execute(sd_draw::Args {
+        let img = match SdDraw::execute(sd_draw::Args {
             instance: args.sd_draw.clone(),
             description: args.description,
             msg: args.msg,
         })
         .await
         {
-            Ok(img) => {
-                let answer = args
-                    .bot
-                    .send_photo(args.msg.chat.id, InputFile::memory(img))
-                    .reply_to_message_id(args.msg.id)
-                    .has_spoiler(args.nsfw)
-                    .send()
-                    .await
-                    .ok();
-                if let Some(photo) = answer
-                    .as_ref()
-                    .and_then(|a| a.photo())
-                    .and_then(|p| p.last())
-                {
-                    args.db
-                        .lock()
-                        .await
-                        .add_caption(&photo.file.id, Some(args.description));
-                }
-                (answer, None)
-            }
-            Err(err) => (None, Some(format!("{err:#}"))),
+            Ok(img) => img,
+            Err(err) => return (None, Some(format!("{err:#}"))),
+        };
+
+        let answer = args
+            .bot
+            .send_photo(args.msg.chat.id, InputFile::memory(img))
+            .reply_to_message_id(args.msg.id)
+            .has_spoiler(args.nsfw)
+            .send()
+            .await
+            .ok();
+        if let Some(photo) = answer
+            .as_ref()
+            .and_then(|a| a.photo())
+            .and_then(|p| p.last())
+        {
+            args.db
+                .lock()
+                .await
+                .add_caption(&photo.file.id, Some(args.description));
         }
+
+        (answer, None)
     }
 }
