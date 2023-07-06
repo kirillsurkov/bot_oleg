@@ -47,7 +47,7 @@ impl<'a> OlegCommand<Args<'a>> for Translate {
                 .await
                 {
                     Ok(text) => text,
-                    Err(err) => format!("Failed to translate:\n{err}"),
+                    Err(err) => format!("Failed to translate:\n{err:#}"),
                 },
             ),
         )

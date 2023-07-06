@@ -95,7 +95,7 @@ impl<'a> super::Core<Args<'a>, Result<Vec<u8>, String>> for SdDraw {
                         Err(err) => Err(format!("No response from SD API:\n{err}")),
                     }
                 }
-                Err(err) => Err(format!("No response from translation API:\n{err}")),
+                Err(err) => Err(format!("No response from translation API:\n{err:#}")),
             }
         } else {
             use strfmt::*;

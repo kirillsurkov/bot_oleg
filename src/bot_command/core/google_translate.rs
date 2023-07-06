@@ -1,3 +1,4 @@
+use anyhow::{bail, Context};
 use async_trait::async_trait;
 
 pub struct GoogleTranslate;
@@ -8,18 +9,17 @@ pub struct Args<'a> {
 }
 
 #[async_trait]
-impl<'a> super::Core<Args<'a>, Result<String, String>> for GoogleTranslate {
-    async fn execute(args: Args<'a>) -> Result<String, String> {
+impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for GoogleTranslate {
+    async fn execute(args: Args<'a>) -> anyhow::Result<String> {
         use google_translate3::api::TranslateTextRequest;
         use google_translate3::{hyper, hyper_rustls, oauth2, Translate};
 
-        let service_account_key = oauth2::read_service_account_key(format!(
-            "./res/{}",
-            std::env::var("GOOGLE_SERVICE_ACCOUNT_JSON")
-                .expect("Google service account JSON is missing")
-        ))
-        .await
-        .unwrap();
+        let google_account = std::env::var("GOOGLE_SERVICE_ACCOUNT_JSON")
+            .expect("Google service account JSON is missing");
+        let service_account_key =
+            oauth2::read_service_account_key(format!("./res/{google_account}",))
+                .await
+                .unwrap();
         let project_id = service_account_key.project_id.clone().unwrap();
         let auth = oauth2::ServiceAccountAuthenticator::builder(service_account_key)
             .build()
@@ -38,7 +38,7 @@ impl<'a> super::Core<Args<'a>, Result<String, String>> for GoogleTranslate {
             auth,
         );
 
-        let result = hub
+        let (_, result) = hub
             .projects()
             .locations_translate_text(
                 TranslateTextRequest {
@@ -49,20 +49,15 @@ impl<'a> super::Core<Args<'a>, Result<String, String>> for GoogleTranslate {
                 &format!("projects/{project_id}"),
             )
             .doit()
-            .await;
+            .await?;
 
-        match result {
-            Ok((_, result)) => match result.translations {
-                Some(result) => match result.first() {
-                    Some(result) => match result.translated_text.clone() {
-                        Some(result) => Ok(result),
-                        None => Err("No text was translated".to_owned()),
-                    },
-                    None => Err("Output is non empty but contains no translations".to_owned()),
-                },
-                None => Err("Output is empty".to_owned()),
-            },
-            Err(err) => Err(err.to_string()),
+        let mut translations = result.translations.context("output is empty")?;
+        if translations.is_empty() {
+            bail!("output is non empty but contains no translations");
         }
+        translations
+            .swap_remove(0)
+            .translated_text
+            .context("no text was translated")
     }
 }
