@@ -7,6 +7,7 @@ pub struct Translate;
 pub struct Args<'a> {
     pub text: String,
     pub to_language: String,
+    pub translator: &'a crate::Translator,
     pub settings: &'a crate::Settings,
 }
 
@@ -18,7 +19,8 @@ impl<'a> super::Command<Args<'a>> for Translate {
             match GoogleTranslate::execute(google_translate::Args {
                 to_language: &args.to_language,
                 text: &args.text,
-                settings: &args.settings,
+                translator: args.translator,
+                settings: args.settings,
             })
             .await
             {

@@ -11,6 +11,7 @@ pub struct Args {
     pub db: Arc<Mutex<crate::DB>>,
     pub description: String,
     pub http_client: reqwest::Client,
+    pub translator: Arc<crate::Translator>,
     pub settings: Arc<crate::Settings>,
 }
 
@@ -22,6 +23,7 @@ impl super::Command<Args> for Sd {
             description: &args.description,
             msg: &msg,
             http_client: &args.http_client,
+            translator: &args.translator,
             settings: &args.settings,
         })
         .await

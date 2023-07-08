@@ -13,6 +13,7 @@ pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
     pub db: Arc<Mutex<crate::DB>>,
     pub http_client: reqwest::Client,
+    pub translator: Arc<crate::Translator>,
     pub settings: Arc<crate::Settings>,
 }
 
@@ -127,6 +128,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 msg,
                 to_language: func_args["to_language"].as_str().unwrap_or_default(),
                 text: func_args["text"].as_str().unwrap_or_default(),
+                translator: &args.translator,
                 settings: &args.settings,
             })
             .await
@@ -142,6 +144,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 description: cmd_args["description"].as_str().unwrap_or_default(),
                 nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
                 http_client: &args.http_client,
+                translator: &args.translator,
                 settings: &args.settings,
             })
             .await

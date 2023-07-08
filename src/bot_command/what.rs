@@ -27,8 +27,8 @@ impl<'a> super::Command<Args<'a>> for What {
             db: args.db,
             bot: bot.clone(),
             file_id: msg.photo().and_then(|p| p.last().map(|p| &p.file.id[..])),
-            http_client: &args.http_client,
-            settings: &args.settings,
+            http_client: args.http_client,
+            settings: args.settings,
         })
         .await
         {

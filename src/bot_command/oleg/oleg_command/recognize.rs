@@ -44,8 +44,8 @@ impl<'a> OlegCommand<Args<'a>> for Recognize {
                     db: args.db,
                     bot: args.bot.clone(),
                     file_id: Some(args.file_id),
-                    http_client: &args.http_client,
-                    settings: &args.settings,
+                    http_client: args.http_client,
+                    settings: args.settings,
                 })
                 .await
                 {
