@@ -15,6 +15,7 @@ pub struct Args<'a> {
     pub instance: Arc<Mutex<SdDraw>>,
     pub description: &'a str,
     pub msg: &'a teloxide::types::Message,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[derive(serde::Deserialize)]
@@ -74,7 +75,8 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
         .await
         .context("no response from translation API")?;
 
-        let SdResponse { images } = reqwest::Client::new()
+        let SdResponse { images } = args
+            .http_client
             .post(format!(
                 "{}/sdapi/v1/txt2img",
                 std::env::var("SD_URL").expect("Stable diffusion API URL is missing")

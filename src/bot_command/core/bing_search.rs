@@ -3,6 +3,7 @@ use async_trait::async_trait;
 pub struct BingSearch;
 pub struct Args<'a> {
     pub query: &'a str,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -31,7 +32,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for BingSearch {
             &[("q", args.query), ("textFormat", "HTML")],
         )
         .unwrap();
-        let response = reqwest::Client::default()
+        let response = args.http_client
             .get(url)
             .header("Ocp-Apim-Subscription-Key", key)
             .send()

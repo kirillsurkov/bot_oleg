@@ -4,16 +4,18 @@ use teloxide::prelude::*;
 
 pub struct Find;
 
-pub struct Args {
+pub struct Args<'a> {
     pub query: String,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[async_trait]
-impl super::Command<Args> for Find {
-    async fn execute(bot: Bot, msg: Message, args: Args) {
+impl<'a> super::Command<Args<'a>> for Find {
+    async fn execute(bot: Bot, msg: Message, args: Args<'a>) {
+        let Args { query, http_client } = &args;
         bot.send_message(
             msg.chat.id,
-            match BingSearch::execute(bing_search::Args { query: &args.query }).await {
+            match BingSearch::execute(bing_search::Args { query, http_client }).await {
                 Ok(text) => text,
                 Err(err) => format!("Failed to translate:\n{err:#}"),
             },
