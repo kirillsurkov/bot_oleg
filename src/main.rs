@@ -11,6 +11,9 @@ use bot_command::{BotCommand, Command};
 mod db;
 use db::DB;
 
+pub mod ext;
+use ext::MessageExt;
+
 pub mod fmt;
 
 mod settings;
@@ -157,11 +160,7 @@ async fn main() {
                 let settings = settings.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
-                        if msg
-                            .text()
-                            .or(msg.caption())
-                            .map_or(true, |t| !t.starts_with("/q"))
-                        {
+                        if msg.text_or_caption().map_or(true, |t| !t.starts_with("/q")) {
                             let db_msg = db.lock().await.get_message(reply.chat.id.0, reply.id.0);
                             if let Some(db_msg) = db_msg {
                                 match db_msg.cause.as_str() {

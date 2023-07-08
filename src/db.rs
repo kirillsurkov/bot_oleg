@@ -1,3 +1,5 @@
+use crate::ext::MessageExt;
+
 #[derive(Clone)]
 pub struct FunctionReq {
     pub name: String,
@@ -117,7 +119,7 @@ impl DB {
         statement
             .bind((7, msg.from().map(|u| u.full_name()).as_deref()))
             .unwrap();
-        statement.bind((8, msg.text().or(msg.caption()))).unwrap();
+        statement.bind((8, msg.text_or_caption())).unwrap();
         statement.next().unwrap();
 
         if let Some(photo) = msg.photo().and_then(|p| p.last()) {
@@ -254,7 +256,7 @@ impl DB {
             .to_owned()
         };
 
-        if let Some(text) = msg.text().or(msg.caption()) {
+        if let Some(text) = msg.text_or_caption() {
             let text = text_with_id(
                 msg.photo()
                     .and_then(|p| p.last())
