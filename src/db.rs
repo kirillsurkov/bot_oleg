@@ -188,6 +188,13 @@ impl DB {
     }
 
     pub fn get_functions(&self, chat_id: i64, msg_id: i32) -> Vec<DBMessage> {
+        fn is_valid_name(s: &str) -> bool {
+            (1..=64).contains(&s.len())
+                && s.as_bytes()
+                    .iter()
+                    .all(|&ch| ch.is_ascii_alphanumeric() || ch == b'-' || ch == b'_')
+        }
+
         let mut statement = self
             .connection
             .prepare("SELECT * FROM functions WHERE chat_id=? and msg_id=? ORDER BY id DESC")
@@ -195,10 +202,9 @@ impl DB {
         statement.bind((1, chat_id)).unwrap();
         statement.bind((2, msg_id as i64)).unwrap();
         let mut functions = vec![];
-        let re = regex::Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap();
         while let Ok(sqlite::State::Row) = statement.next() {
             let name = statement.read::<String, _>("name").unwrap();
-            if !re.is_match(&name) {
+            if !is_valid_name(&name) {
                 continue;
             }
             let req = statement.read::<String, _>("req").map(|r| FunctionReq {
