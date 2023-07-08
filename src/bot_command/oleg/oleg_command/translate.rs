@@ -11,6 +11,7 @@ pub struct Args<'a> {
     pub msg: &'a Message,
     pub to_language: &'a str,
     pub text: &'a str,
+    pub translator: &'a crate::Translator,
     pub settings: &'a crate::Settings,
 }
 
@@ -44,7 +45,8 @@ impl<'a> OlegCommand<Args<'a>> for Translate {
                 match GoogleTranslate::execute(google_translate::Args {
                     to_language: args.to_language,
                     text: args.text,
-                    settings: &args.settings,
+                    translator: args.translator,
+                    settings: args.settings,
                 })
                 .await
                 {

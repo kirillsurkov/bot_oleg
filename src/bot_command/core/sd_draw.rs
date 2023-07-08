@@ -16,6 +16,7 @@ pub struct Args<'a> {
     pub description: &'a str,
     pub msg: &'a teloxide::types::Message,
     pub http_client: &'a reqwest::Client,
+    pub translator: &'a crate::Translator,
     pub settings: &'a crate::Settings,
 }
 
@@ -60,7 +61,8 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
         let translated_prompt = GoogleTranslate::execute(google_translate::Args {
             to_language: "en",
             text: args.description,
-            settings: &args.settings,
+            translator: args.translator,
+            settings: args.settings,
         })
         .await
         .context("no response from translation API")?;

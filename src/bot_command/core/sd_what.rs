@@ -27,7 +27,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
         let file_id = args
             .file_id
             .ok_or_else(|| anyhow!("No photo to interrogate"))?;
-        if let Ok(Some(caption)) = args.db.lock().await.get_caption(&file_id) {
+        if let Ok(Some(caption)) = args.db.lock().await.get_caption(file_id) {
             return Ok(caption);
         }
 
@@ -58,7 +58,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
             .await
             .context("can't parse interrogate response")?;
 
-        args.db.lock().await.add_caption(&file_id, Some(&caption));
+        args.db.lock().await.add_caption(file_id, Some(&caption));
         Ok(caption)
     }
 }

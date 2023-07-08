@@ -16,6 +16,7 @@ pub struct Args<'a> {
     pub description: &'a str,
     pub nsfw: bool,
     pub http_client: &'a reqwest::Client,
+    pub translator: &'a crate::Translator,
     pub settings: &'a crate::Settings,
 }
 
@@ -47,8 +48,9 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
             instance: args.sd_draw.clone(),
             description: args.description,
             msg: args.msg,
-            http_client: &args.http_client,
-            settings: &args.settings,
+            http_client: args.http_client,
+            translator: args.translator,
+            settings: args.settings,
         })
         .await
         {

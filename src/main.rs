@@ -1,3 +1,4 @@
+use google_translate3::{hyper, hyper_rustls, oauth2};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -15,6 +16,9 @@ pub mod fmt;
 mod settings;
 use settings::Settings;
 
+type Translator =
+    google_translate3::Translate<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>;
+
 #[tokio::main]
 async fn main() {
     dotenv::from_filename("./res/.env").unwrap();
@@ -24,17 +28,39 @@ async fn main() {
     let db = Arc::new(Mutex::new(DB::new()));
     let sd_draw = Arc::new(Mutex::new(bot_command::core::SdDraw::default()));
     let http_client = reqwest::Client::new();
+    let google_account = &settings.google_service_account_json;
+    let service_account_key = oauth2::read_service_account_key(format!("./res/{google_account}",))
+        .await
+        .unwrap();
+    let auth = oauth2::ServiceAccountAuthenticator::builder(service_account_key)
+        .build()
+        .await
+        .unwrap();
+    let hyper_client = hyper::Client::builder().build(
+        hyper_rustls::HttpsConnectorBuilder::new()
+            .with_native_roots()
+            .https_or_http()
+            .enable_http1()
+            .enable_http2()
+            .build(),
+    );
+    let translator: Arc<Translator> = Arc::new(google_translate3::Translate::new(
+        hyper_client,
+        auth,
+    ));
 
     let handler = Update::filter_message()
         .branch(dptree::entry().filter_command::<BotCommand>().endpoint({
             let db = db.clone();
             let sd_draw = sd_draw.clone();
             let http_client = http_client.clone();
+            let translator = translator.clone();
             let settings = settings.clone();
             move |bot: Bot, msg: Message, cmd: BotCommand| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
                 let http_client = http_client.clone();
+                let translator = translator.clone();
                 let settings = settings.clone();
                 async move {
                     match cmd {
@@ -47,6 +73,7 @@ async fn main() {
                                 bot_command::translate::Args {
                                     to_language,
                                     text,
+                                    translator: &translator,
                                     settings: &settings,
                                 },
                             )
@@ -60,6 +87,7 @@ async fn main() {
                                     sd_draw: sd_draw.clone(),
                                     db,
                                     http_client,
+                                    translator,
                                     settings,
                                 },
                             ));
@@ -73,6 +101,7 @@ async fn main() {
                                     db,
                                     description,
                                     http_client,
+                                    translator,
                                     settings,
                                 },
                             ));
@@ -111,11 +140,13 @@ async fn main() {
             let db = db.clone();
             let sd_draw = sd_draw.clone();
             let http_client = http_client.clone();
+            let translator = translator.clone();
             let settings = settings.clone();
             move |bot: Bot, msg: Message| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
                 let http_client = http_client.clone();
+                let translator = translator.clone();
                 let settings = settings.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
@@ -135,6 +166,7 @@ async fn main() {
                                                 sd_draw: sd_draw.clone(),
                                                 db,
                                                 http_client,
+                                                translator,
                                                 settings,
                                             },
                                         )
@@ -158,6 +190,7 @@ async fn main() {
                                     sd_draw: sd_draw.clone(),
                                     db,
                                     http_client,
+                                    translator,
                                     settings,
                                 },
                             )
