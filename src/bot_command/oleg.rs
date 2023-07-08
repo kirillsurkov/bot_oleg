@@ -28,17 +28,13 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
         args.db
             .lock()
             .await
-            .unwind_thread(
-                msg,
-                args.settings.oleg_memory_size,
-                |text| {
-                    if let Some(command) = text.strip_prefix("/oleg") {
-                        !command.trim().is_empty()
-                    } else {
-                        !text.is_empty()
-                    }
-                },
-            )
+            .unwind_thread(msg, args.settings.oleg_memory_size, |text| {
+                if let Some(command) = text.strip_prefix("/oleg") {
+                    !command.trim().is_empty()
+                } else {
+                    !text.is_empty()
+                }
+            })
             .iter()
             .map(|m| {
                 let role = match m.cause.as_str() {

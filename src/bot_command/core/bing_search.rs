@@ -33,7 +33,8 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for BingSearch {
             &[("q", args.query), ("textFormat", "HTML")],
         )
         .unwrap();
-        let response = args.http_client
+        let response = args
+            .http_client
             .get(url)
             .header("Ocp-Apim-Subscription-Key", key)
             .send()

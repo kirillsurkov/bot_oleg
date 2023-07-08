@@ -10,6 +10,8 @@ use bot_command::{BotCommand, Command};
 mod db;
 use db::DB;
 
+pub mod fmt;
+
 mod settings;
 use settings::Settings;
 

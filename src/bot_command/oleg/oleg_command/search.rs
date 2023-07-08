@@ -32,11 +32,21 @@ impl<'a> OlegCommand<Args<'a>> for Search {
     }
 
     async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
-        let Args { query, http_client, settings } = &args;
+        let Args {
+            query,
+            http_client,
+            settings,
+        } = &args;
         (
             None,
             Some(
-                match BingSearch::execute(bing_search::Args { query, http_client, settings }).await {
+                match BingSearch::execute(bing_search::Args {
+                    query,
+                    http_client,
+                    settings,
+                })
+                .await
+                {
                     Ok(text) => text,
                     Err(err) => format!("Web search failed:\n{err:#}"),
                 },

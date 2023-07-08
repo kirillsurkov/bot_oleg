@@ -1,4 +1,4 @@
-use serde::Deserialize;
+use serde::{de, Deserialize, Deserializer};
 
 pub type SdId = i64;
 
@@ -13,17 +13,27 @@ pub struct Settings {
     pub sd_timeout: u64,
     #[serde(deserialize_with = "deserialize_sd_timeout_list")]
     pub sd_timeout_list: Vec<SdId>,
-    pub sd_timeout_message: Option<String>,
+    #[serde(deserialize_with = "deserialize_formatter")]
+    pub sd_timeout_message: Option<crate::fmt::Formatter>,
     pub sd_url: String,
 }
 
 fn deserialize_sd_timeout_list<'de, D>(de: D) -> Result<Vec<SdId>, D::Error>
 where
-    D: serde::Deserializer<'de>,
+    D: Deserializer<'de>,
 {
     String::deserialize(de)?
         .split(',')
         .map(std::str::FromStr::from_str)
         .collect::<Result<_, _>>()
-        .map_err(serde::de::Error::custom)
+        .map_err(de::Error::custom)
+}
+
+fn deserialize_formatter<'de, D>(de: D) -> Result<Option<crate::fmt::Formatter>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<String>::deserialize(de)?
+        .map(|raw| raw.parse().map_err(de::Error::custom))
+        .transpose()
 }

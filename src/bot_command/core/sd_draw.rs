@@ -41,13 +41,12 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
                     && time.elapsed().as_secs() < sd_timeout
             })
         {
-            use strfmt::*;
             let chat_timeout = args.instance.lock().await.timeouts[&args.msg.chat.id.0]
                 .elapsed()
                 .as_secs();
             let timeout = sd_timeout - chat_timeout;
             return Err(match args.settings.sd_timeout_message.as_ref() {
-                Some(msg) => anyhow!(strfmt!(&msg, timeout).unwrap()),
+                Some(msg) => anyhow!(msg.format(&timeout)),
                 None => anyhow!("Stable diffusion timeout message is missing"),
             });
         }
@@ -68,10 +67,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
 
         let SdResponse { images } = args
             .http_client
-            .post(format!(
-                "{}/sdapi/v1/txt2img",
-                args.settings.sd_url,
-            ))
+            .post(format!("{}/sdapi/v1/txt2img", args.settings.sd_url,))
             .json(&serde_json::json!({
                 "steps": 25,
                 "cfg_scale": 10.0,
