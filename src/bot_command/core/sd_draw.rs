@@ -16,6 +16,7 @@ pub struct Args<'a> {
     pub description: &'a str,
     pub msg: &'a teloxide::types::Message,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[derive(serde::Deserialize)]
@@ -26,19 +27,8 @@ struct SdResponse {
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
     async fn execute(args: Args<'a>) -> anyhow::Result<Vec<u8>> {
-        let sd_timeout = std::env::var("SD_TIMEOUT")
-            .expect("Stable diffusion timeout is missing")
-            .parse::<u64>()
-            .expect("Can't parse stable diffusion timeout as u64");
-
-        let sd_timeout_list = std::env::var("SD_TIMEOUT_LIST")
-            .expect("Stable diffusion timeout list is missing")
-            .split(',')
-            .map(|id| {
-                id.parse::<i64>()
-                    .expect("ID in stable diffusion timeout list can't be parsed")
-            })
-            .collect::<Vec<_>>();
+        let sd_timeout = args.settings.sd_timeout;
+        let sd_timeout_list = &args.settings.sd_timeout_list;
 
         if args
             .instance
@@ -56,9 +46,9 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
                 .elapsed()
                 .as_secs();
             let timeout = sd_timeout - chat_timeout;
-            return Err(match std::env::var("SD_TIMEOUT_MESSAGE") {
-                Ok(msg) => anyhow!(strfmt!(&msg, timeout).unwrap()),
-                Err(_) => anyhow!("Stable diffusion timeout message is missing"),
+            return Err(match args.settings.sd_timeout_message.as_ref() {
+                Some(msg) => anyhow!(strfmt!(&msg, timeout).unwrap()),
+                None => anyhow!("Stable diffusion timeout message is missing"),
             });
         }
 
@@ -71,6 +61,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
         let translated_prompt = GoogleTranslate::execute(google_translate::Args {
             to_language: "en",
             text: args.description,
+            settings: &args.settings,
         })
         .await
         .context("no response from translation API")?;
@@ -79,7 +70,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
             .http_client
             .post(format!(
                 "{}/sdapi/v1/txt2img",
-                std::env::var("SD_URL").expect("Stable diffusion API URL is missing")
+                args.settings.sd_url,
             ))
             .json(&serde_json::json!({
                 "steps": 25,

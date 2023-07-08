@@ -16,6 +16,7 @@ pub struct Args<'a> {
     pub description: &'a str,
     pub nsfw: bool,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -47,6 +48,7 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
             description: args.description,
             msg: args.msg,
             http_client: &args.http_client,
+            settings: &args.settings,
         })
         .await
         {

@@ -10,11 +10,15 @@ use bot_command::{BotCommand, Command};
 mod db;
 use db::DB;
 
+mod settings;
+use settings::Settings;
+
 #[tokio::main]
 async fn main() {
     dotenv::from_filename("./res/.env").unwrap();
 
-    let bot = Bot::new(std::env::var("BOT_TOKEN").expect("Telegram bot api key is missing"));
+    let settings = Arc::new(envy::from_env::<Settings>().unwrap());
+    let bot = Bot::new(&settings.bot_token);
     let db = Arc::new(Mutex::new(DB::new()));
     let sd_draw = Arc::new(Mutex::new(bot_command::core::SdDraw::default()));
     let http_client = reqwest::Client::new();
@@ -24,10 +28,12 @@ async fn main() {
             let db = db.clone();
             let sd_draw = sd_draw.clone();
             let http_client = http_client.clone();
+            let settings = settings.clone();
             move |bot: Bot, msg: Message, cmd: BotCommand| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
                 let http_client = http_client.clone();
+                let settings = settings.clone();
                 async move {
                     match cmd {
                         BotCommand::Help => bot_command::Help::execute(bot, msg, ()).await,
@@ -36,7 +42,11 @@ async fn main() {
                             bot_command::Translate::execute(
                                 bot,
                                 msg,
-                                bot_command::translate::Args { to_language, text },
+                                bot_command::translate::Args {
+                                    to_language,
+                                    text,
+                                    settings: &settings,
+                                },
                             )
                             .await
                         }
@@ -48,6 +58,7 @@ async fn main() {
                                     sd_draw: sd_draw.clone(),
                                     db,
                                     http_client,
+                                    settings,
                                 },
                             ));
                         }
@@ -60,6 +71,7 @@ async fn main() {
                                     db,
                                     description,
                                     http_client,
+                                    settings,
                                 },
                             ));
                         }
@@ -70,6 +82,7 @@ async fn main() {
                                 bot_command::what::Args {
                                     db,
                                     http_client: &http_client,
+                                    settings: &settings,
                                 },
                             )
                             .await;
@@ -81,6 +94,7 @@ async fn main() {
                                 bot_command::find::Args {
                                     query,
                                     http_client: &http_client,
+                                    settings: &settings,
                                 },
                             )
                             .await
@@ -95,10 +109,12 @@ async fn main() {
             let db = db.clone();
             let sd_draw = sd_draw.clone();
             let http_client = http_client.clone();
+            let settings = settings.clone();
             move |bot: Bot, msg: Message| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
                 let http_client = http_client.clone();
+                let settings = settings.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
                         if msg
@@ -117,6 +133,7 @@ async fn main() {
                                                 sd_draw: sd_draw.clone(),
                                                 db,
                                                 http_client,
+                                                settings,
                                             },
                                         )
                                         .await;
@@ -139,6 +156,7 @@ async fn main() {
                                     sd_draw: sd_draw.clone(),
                                     db,
                                     http_client,
+                                    settings,
                                 },
                             )
                             .await;

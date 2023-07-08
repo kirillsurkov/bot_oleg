@@ -14,6 +14,7 @@ pub struct Args<'a> {
     pub db: Arc<Mutex<crate::DB>>,
     pub file_id: &'a str,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -44,6 +45,7 @@ impl<'a> OlegCommand<Args<'a>> for Recognize {
                     bot: args.bot.clone(),
                     file_id: Some(args.file_id),
                     http_client: &args.http_client,
+                    settings: &args.settings,
                 })
                 .await
                 {
