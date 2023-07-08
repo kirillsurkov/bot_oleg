@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use openai::chat::*;
-use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
+
+use std::sync::Arc;
 
 mod oleg_command;
 use oleg_command::OlegCommand;
@@ -16,6 +18,17 @@ pub struct Args {
     pub translator: Arc<crate::Translator>,
     pub settings: Arc<crate::Settings>,
 }
+
+static FUNCTION_DESCS: Lazy<[ChatCompletionFunctionDefinition; 6]> = Lazy::new(|| {
+    [
+        oleg_command::GetTime::desc(),
+        oleg_command::Translate::desc(),
+        oleg_command::Draw::desc(),
+        oleg_command::Recognize::desc(),
+        oleg_command::Search::desc(),
+        oleg_command::ExchangeRates::desc(),
+    ]
+});
 
 async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Message>, String> {
     let mut messages = vec![ChatCompletionMessage {
@@ -73,14 +86,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
 
     println!("{messages:#?}");
 
-    let functions = [
-        oleg_command::GetTime::desc(),
-        oleg_command::Translate::desc(),
-        oleg_command::Draw::desc(),
-        oleg_command::Recognize::desc(),
-        oleg_command::Search::desc(),
-        oleg_command::ExchangeRates::desc(),
-    ];
+    let functions = &*FUNCTION_DESCS;
     let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
         .functions(functions.clone())
         .create()
