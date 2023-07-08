@@ -43,7 +43,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             .lock()
             .await
             .unwind_thread(msg, args.settings.oleg_memory_size, |text| {
-                if let Some(command) = text.strip_prefix("/oleg") {
+                if let Some(command) = text.strip_prefix(crate::BOT_COMMAND_PREFIX) {
                     !command.trim().is_empty()
                 } else {
                     !text.is_empty()
@@ -63,7 +63,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                             format!(
                                 "{}: {}",
                                 m.sender.clone().unwrap(),
-                                text.strip_prefix("/oleg").map_or(&text[..], |s| s.trim()),
+                                text.strip_prefix(crate::BOT_COMMAND_PREFIX).map_or(&text[..], |s| s.trim()),
                             )
                         }),
                         ChatCompletionMessageRole::Function => {

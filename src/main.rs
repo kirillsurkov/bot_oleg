@@ -19,6 +19,8 @@ use settings::Settings;
 type Translator =
     google_translate3::Translate<hyper_rustls::HttpsConnector<hyper::client::HttpConnector>>;
 
+const BOT_COMMAND_PREFIX: &str = "/oleg";
+
 #[tokio::main]
 async fn main() {
     dotenv::from_filename("./res/.env").unwrap();
@@ -178,7 +180,7 @@ async fn main() {
                             }
                         }
                     } else if let Some(caption) = msg.caption() {
-                        if caption.starts_with("/oleg")
+                        if caption.starts_with(BOT_COMMAND_PREFIX)
                             && (caption.len() == 5
                                 || (caption.len() > 5
                                     && caption.chars().nth(5).unwrap().is_whitespace()))
