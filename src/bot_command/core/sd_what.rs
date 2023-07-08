@@ -21,6 +21,19 @@ struct Caption {
     caption: String,
 }
 
+fn request_body(encoded_image: &str) -> impl serde::Serialize + 'static {
+    return Body {
+        model: "clip",
+        image: format!("data:image/png;base64,{encoded_image}"),
+    };
+
+    #[derive(serde::Serialize)]
+    struct Body {
+        model: &'static str,
+        image: String,
+    }
+}
+
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
     async fn execute(args: Args<'a>) -> anyhow::Result<String> {
@@ -47,10 +60,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
         let Caption { caption } = args
             .http_client
             .post(format!("{sd_url}/sdapi/v1/interrogate"))
-            .json(&serde_json::json!({
-                "model": "clip",
-                "image": format!("data:image/png;base64,{encoded_image}")
-            }))
+            .json(&request_body(&encoded_image))
             .send()
             .await
             .context("interrogation failed")?
