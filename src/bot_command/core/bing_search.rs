@@ -4,6 +4,7 @@ pub struct BingSearch;
 pub struct Args<'a> {
     pub query: &'a str,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Debug)]
@@ -26,7 +27,7 @@ pub struct Response {
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for BingSearch {
     async fn execute(args: Args<'a>) -> anyhow::Result<String> {
-        let key = std::env::var("BING_API_KEY").expect("Bing API key is missing");
+        let key = &args.settings.bing_api_key[..];
         let url = reqwest::Url::parse_with_params(
             "https://api.bing.microsoft.com/v7.0/search",
             &[("q", args.query), ("textFormat", "HTML")],

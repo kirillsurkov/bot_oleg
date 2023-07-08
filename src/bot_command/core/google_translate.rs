@@ -6,6 +6,7 @@ pub struct GoogleTranslate;
 pub struct Args<'a> {
     pub to_language: &'a str,
     pub text: &'a str,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -14,8 +15,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for GoogleTranslate {
         use google_translate3::api::TranslateTextRequest;
         use google_translate3::{hyper, hyper_rustls, oauth2, Translate};
 
-        let google_account = std::env::var("GOOGLE_SERVICE_ACCOUNT_JSON")
-            .expect("Google service account JSON is missing");
+        let google_account = &args.settings.google_service_account_json;
         let service_account_key =
             oauth2::read_service_account_key(format!("./res/{google_account}",))
                 .await

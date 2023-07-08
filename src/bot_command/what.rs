@@ -9,6 +9,7 @@ pub struct What;
 pub struct Args<'a> {
     pub db: Arc<Mutex<crate::DB>>,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -27,6 +28,7 @@ impl<'a> super::Command<Args<'a>> for What {
             bot: bot.clone(),
             file_id: msg.photo().and_then(|p| p.last().map(|p| &p.file.id[..])),
             http_client: &args.http_client,
+            settings: &args.settings,
         })
         .await
         {

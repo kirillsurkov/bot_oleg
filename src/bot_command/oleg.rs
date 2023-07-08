@@ -13,12 +13,13 @@ pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
     pub db: Arc<Mutex<crate::DB>>,
     pub http_client: reqwest::Client,
+    pub settings: Arc<crate::Settings>,
 }
 
 async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Message>, String> {
     let mut messages = vec![ChatCompletionMessage {
         role: ChatCompletionMessageRole::System,
-        content: Some(std::env::var("OLEG_PROMPT").expect("Oleg prompt is missing")),
+        content: Some(args.settings.oleg_prompt.clone()),
         name: None,
         function_call: None,
     }];
@@ -29,10 +30,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             .await
             .unwind_thread(
                 msg,
-                std::env::var("OLEG_MEMORY_SIZE")
-                    .expect("Oleg memory size is missing")
-                    .parse::<usize>()
-                    .expect("Can't parse Oleg memory size as usize"),
+                args.settings.oleg_memory_size,
                 |text| {
                     if let Some(command) = text.strip_prefix("/oleg") {
                         !command.trim().is_empty()
@@ -126,13 +124,14 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             .await
         }
         "translate" => {
-            let args: serde_json::Value =
+            let func_args: serde_json::Value =
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::Translate::execute(oleg_command::translate::Args {
                 bot,
                 msg,
-                to_language: args["to_language"].as_str().unwrap_or_default(),
-                text: args["text"].as_str().unwrap_or_default(),
+                to_language: func_args["to_language"].as_str().unwrap_or_default(),
+                text: func_args["text"].as_str().unwrap_or_default(),
+                settings: &args.settings,
             })
             .await
         }
@@ -147,6 +146,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 description: cmd_args["description"].as_str().unwrap_or_default(),
                 nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
                 http_client: &args.http_client,
+                settings: &args.settings,
             })
             .await
         }
@@ -160,6 +160,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 db: args.db.clone(),
                 file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
                 http_client: &args.http_client,
+                settings: &args.settings,
             })
             .await
         }
@@ -169,6 +170,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             oleg_command::Search::execute(oleg_command::search::Args {
                 query: cmd_args["query"].as_str().unwrap_or_default(),
                 http_client: &args.http_client,
+                settings: &args.settings,
             })
             .await
         }
@@ -198,7 +200,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
 #[async_trait]
 impl super::Command<Args> for Oleg {
     async fn execute(bot: Bot, msg: Message, args: Args) {
-        openai::set_key(std::env::var("OPENAI_TOKEN").expect("OpenAI api key is missing"));
+        openai::set_key(args.settings.openai_token.clone());
 
         let mut max_iter = 5;
 

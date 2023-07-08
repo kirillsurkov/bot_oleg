@@ -13,6 +13,7 @@ pub struct Args<'a> {
     pub bot: Bot,
     pub file_id: Option<&'a str>,
     pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[derive(serde::Deserialize)]
@@ -41,7 +42,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
             .await
             .context("downloading image failed")?;
 
-        let sd_url = std::env::var("SD_URL").expect("Stable diffusion API URL is missing");
+        let sd_url = &args.settings.sd_url;
         let encoded_image = base64::engine::general_purpose::STANDARD.encode(img);
         let Caption { caption } = args
             .http_client
