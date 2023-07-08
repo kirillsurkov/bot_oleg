@@ -25,6 +25,29 @@ struct SdResponse {
     images: Vec<String>,
 }
 
+fn request_body(prompt: &str) -> impl serde::Serialize + 'static {
+    return Body {
+        steps: 25,
+        cfg_scale: 10.0,
+        sampler_name: "Euler a",
+        width: 512,
+        height: 1024,
+        prompt: format!("(masterpiece, best quality), {prompt}"),
+        negative_prompt: "EasyNegativeV2",
+    };
+
+    #[derive(serde::Serialize)]
+    struct Body {
+        steps: i64,
+        cfg_scale: f64,
+        sampler_name: &'static str,
+        width: i64,
+        height: i64,
+        prompt: String,
+        negative_prompt: &'static str,
+    }
+}
+
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
     async fn execute(args: Args<'a>) -> anyhow::Result<Vec<u8>> {
@@ -70,15 +93,7 @@ impl<'a> super::Core<Args<'a>, anyhow::Result<Vec<u8>>> for SdDraw {
         let SdResponse { images } = args
             .http_client
             .post(format!("{}/sdapi/v1/txt2img", args.settings.sd_url,))
-            .json(&serde_json::json!({
-                "steps": 25,
-                "cfg_scale": 10.0,
-                "sampler_name": "Euler a",
-                "width": 512,
-                "height": 1024,
-                "prompt": format!("(masterpiece, best quality), {}", translated_prompt),
-                "negative_prompt": "EasyNegativeV2"
-            }))
+            .json(&request_body(&translated_prompt))
             .send()
             .await
             .context("no response from SD API")?
