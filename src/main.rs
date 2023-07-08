@@ -21,6 +21,13 @@ type Translator =
 
 const BOT_COMMAND_PREFIX: &str = "/oleg";
 
+fn is_valid_command(s: &str) -> bool {
+    match s.strip_prefix(BOT_COMMAND_PREFIX) {
+        None => false,
+        Some(rest) => rest.chars().next().map_or(true, |ch| ch.is_whitespace()),
+    }
+}
+
 #[tokio::main]
 async fn main() {
     dotenv::from_filename("./res/.env").unwrap();
@@ -46,10 +53,8 @@ async fn main() {
             .enable_http2()
             .build(),
     );
-    let translator: Arc<Translator> = Arc::new(google_translate3::Translate::new(
-        hyper_client,
-        auth,
-    ));
+    let translator: Arc<Translator> =
+        Arc::new(google_translate3::Translate::new(hyper_client, auth));
 
     let handler = Update::filter_message()
         .branch(dptree::entry().filter_command::<BotCommand>().endpoint({
@@ -180,11 +185,7 @@ async fn main() {
                             }
                         }
                     } else if let Some(caption) = msg.caption() {
-                        if caption.starts_with(BOT_COMMAND_PREFIX)
-                            && (caption.len() == 5
-                                || (caption.len() > 5
-                                    && caption.chars().nth(5).unwrap().is_whitespace()))
-                        {
+                        if is_valid_command(caption) {
                             bot_command::Oleg::execute(
                                 bot,
                                 msg,
