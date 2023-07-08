@@ -6,13 +6,14 @@ use tokio::sync::Mutex;
 
 pub struct What;
 
-pub struct Args {
+pub struct Args<'a> {
     pub db: Arc<Mutex<crate::DB>>,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[async_trait]
-impl super::Command<Args> for What {
-    async fn execute(bot: Bot, msg: Message, args: Args) {
+impl<'a> super::Command<Args<'a>> for What {
+    async fn execute(bot: Bot, msg: Message, args: Args<'a>) {
         let msg = msg
             .photo()
             .and(Some(&msg))
@@ -24,9 +25,8 @@ impl super::Command<Args> for What {
         match SdWhat::execute(sd_what::Args {
             db: args.db,
             bot: bot.clone(),
-            file_id: msg
-                .photo()
-                .and_then(|p| p.last().map(|p| p.file.id.clone())),
+            file_id: msg.photo().and_then(|p| p.last().map(|p| &p.file.id[..])),
+            http_client: &args.http_client,
         })
         .await
         {

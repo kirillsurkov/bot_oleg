@@ -17,14 +17,17 @@ async fn main() {
     let bot = Bot::new(std::env::var("BOT_TOKEN").expect("Telegram bot api key is missing"));
     let db = Arc::new(Mutex::new(DB::new()));
     let sd_draw = Arc::new(Mutex::new(bot_command::core::SdDraw::default()));
+    let http_client = reqwest::Client::new();
 
     let handler = Update::filter_message()
         .branch(dptree::entry().filter_command::<BotCommand>().endpoint({
             let db = db.clone();
             let sd_draw = sd_draw.clone();
+            let http_client = http_client.clone();
             move |bot: Bot, msg: Message, cmd: BotCommand| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
+                let http_client = http_client.clone();
                 async move {
                     match cmd {
                         BotCommand::Help => bot_command::Help::execute(bot, msg, ()).await,
@@ -44,6 +47,7 @@ async fn main() {
                                 bot_command::oleg::Args {
                                     sd_draw: sd_draw.clone(),
                                     db,
+                                    http_client,
                                 },
                             ));
                         }
@@ -55,16 +59,31 @@ async fn main() {
                                     sd_draw: sd_draw.clone(),
                                     db,
                                     description,
+                                    http_client,
                                 },
                             ));
                         }
                         BotCommand::What => {
-                            bot_command::What::execute(bot, msg, bot_command::what::Args { db })
-                                .await;
+                            bot_command::What::execute(
+                                bot,
+                                msg,
+                                bot_command::what::Args {
+                                    db,
+                                    http_client: &http_client,
+                                },
+                            )
+                            .await;
                         }
                         BotCommand::Find { query } => {
-                            bot_command::Find::execute(bot, msg, bot_command::find::Args { query })
-                                .await
+                            bot_command::Find::execute(
+                                bot,
+                                msg,
+                                bot_command::find::Args {
+                                    query,
+                                    http_client: &http_client,
+                                },
+                            )
+                            .await
                         }
                     };
 
@@ -75,9 +94,11 @@ async fn main() {
         .branch(dptree::entry().endpoint({
             let db = db.clone();
             let sd_draw = sd_draw.clone();
+            let http_client = http_client.clone();
             move |bot: Bot, msg: Message| {
                 let db = db.clone();
                 let sd_draw = sd_draw.clone();
+                let http_client = http_client.clone();
                 async move {
                     if let Some(reply) = msg.reply_to_message() {
                         if msg
@@ -95,6 +116,7 @@ async fn main() {
                                             bot_command::oleg::Args {
                                                 sd_draw: sd_draw.clone(),
                                                 db,
+                                                http_client,
                                             },
                                         )
                                         .await;
@@ -116,6 +138,7 @@ async fn main() {
                                 bot_command::oleg::Args {
                                     sd_draw: sd_draw.clone(),
                                     db,
+                                    http_client,
                                 },
                             )
                             .await;

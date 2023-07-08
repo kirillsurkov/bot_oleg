@@ -12,6 +12,7 @@ pub struct Oleg;
 pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
     pub db: Arc<Mutex<crate::DB>>,
+    pub http_client: reqwest::Client,
 }
 
 async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Message>, String> {
@@ -145,6 +146,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 db: args.db.clone(),
                 description: cmd_args["description"].as_str().unwrap_or_default(),
                 nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
+                http_client: &args.http_client,
             })
             .await
         }
@@ -157,6 +159,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 msg,
                 db: args.db.clone(),
                 file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
             })
             .await
         }
@@ -165,6 +168,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::Search::execute(oleg_command::search::Args {
                 query: cmd_args["query"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
             })
             .await
         }
@@ -173,6 +177,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::ExchangeRates::execute(oleg_command::exchange_rates::Args {
                 base: cmd_args["base"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
             })
             .await
         }

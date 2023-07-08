@@ -8,10 +8,11 @@ use std::sync::Arc;
 
 pub struct SdWhat;
 
-pub struct Args {
+pub struct Args<'a> {
     pub db: Arc<Mutex<crate::DB>>,
     pub bot: Bot,
-    pub file_id: Option<String>,
+    pub file_id: Option<&'a str>,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[derive(serde::Deserialize)]
@@ -20,8 +21,8 @@ struct Caption {
 }
 
 #[async_trait]
-impl super::Core<Args, anyhow::Result<String>> for SdWhat {
-    async fn execute(args: Args) -> anyhow::Result<String> {
+impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for SdWhat {
+    async fn execute(args: Args<'a>) -> anyhow::Result<String> {
         let file_id = args
             .file_id
             .ok_or_else(|| anyhow!("No photo to interrogate"))?;
@@ -31,7 +32,7 @@ impl super::Core<Args, anyhow::Result<String>> for SdWhat {
 
         let file = args
             .bot
-            .get_file(&file_id)
+            .get_file(file_id)
             .await
             .context("getting file failed")?;
         let mut img = vec![];
@@ -42,7 +43,8 @@ impl super::Core<Args, anyhow::Result<String>> for SdWhat {
 
         let sd_url = std::env::var("SD_URL").expect("Stable diffusion API URL is missing");
         let encoded_image = base64::engine::general_purpose::STANDARD.encode(img);
-        let Caption { caption } = reqwest::Client::new()
+        let Caption { caption } = args
+            .http_client
             .post(format!("{sd_url}/sdapi/v1/interrogate"))
             .json(&serde_json::json!({
                 "model": "clip",

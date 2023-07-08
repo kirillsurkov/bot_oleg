@@ -7,6 +7,7 @@ pub struct CurrencyExchangeRate;
 
 pub struct Args<'a> {
     pub base: &'a str,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -25,12 +26,13 @@ fn is_supported_currency(currency: &str) -> bool {
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<Response>> for CurrencyExchangeRate {
     async fn execute(args: Args<'a>) -> anyhow::Result<Response> {
+        let Args { base, http_client } = args;
         let url = reqwest::Url::parse_with_params(
             "https://api.exchangerate.host/latest",
-            &[("base", args.base)],
+            &[("base", base)],
         )
         .unwrap();
-        let response = reqwest::Client::default()
+        let response = http_client
             .get(url)
             .send()
             .await
