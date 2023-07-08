@@ -35,8 +35,11 @@ impl<'a> OlegCommand<Args<'a>> for ExchangeRates {
         (
             None,
             Some(
-                match CurrencyExchangeRate::execute(currency_exchangerate::Args { base, http_client })
-                    .await
+                match CurrencyExchangeRate::execute(currency_exchangerate::Args {
+                    base,
+                    http_client,
+                })
+                .await
                 {
                     Ok(response) => serde_json::to_string(&response).unwrap(),
                     Err(err) => format!("Get exchange rates failed:\n{err:#}"),
