@@ -1,8 +1,10 @@
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use openai::chat::*;
-use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
+
+use std::sync::Arc;
 
 mod oleg_command;
 use oleg_command::OlegCommand;
@@ -11,13 +13,27 @@ pub struct Oleg;
 
 pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
+    pub http_client: reqwest::Client,
+    pub translator: Arc<crate::Translator>,
+    pub settings: Arc<crate::Settings>,
 }
+
+static FUNCTION_DESCS: Lazy<[ChatCompletionFunctionDefinition; 6]> = Lazy::new(|| {
+    [
+        oleg_command::GetTime::desc(),
+        oleg_command::Translate::desc(),
+        oleg_command::Draw::desc(),
+        oleg_command::Recognize::desc(),
+        oleg_command::Search::desc(),
+        oleg_command::ExchangeRates::desc(),
+    ]
+});
 
 async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Message>, String> {
     let mut messages = vec![ChatCompletionMessage {
         role: ChatCompletionMessageRole::System,
-        content: Some(std::env::var("OLEG_PROMPT").expect("Oleg prompt is missing")),
+        content: Some(args.settings.oleg_prompt.clone()),
         name: None,
         function_call: None,
     }];
@@ -26,20 +42,13 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
         args.db
             .lock()
             .await
-            .unwind_thread(
-                msg,
-                std::env::var("OLEG_MEMORY_SIZE")
-                    .expect("Oleg memory size is missing")
-                    .parse::<usize>()
-                    .expect("Can't parse Oleg memory size as usize"),
-                |text| {
-                    if let Some(command) = text.strip_prefix("/oleg") {
-                        !command.trim().is_empty()
-                    } else {
-                        !text.is_empty()
-                    }
-                },
-            )
+            .unwind_thread(msg, args.settings.oleg_memory_size, |text| {
+                if let Some(command) = text.strip_prefix(crate::BOT_COMMAND_PREFIX) {
+                    !command.trim().is_empty()
+                } else {
+                    !text.is_empty()
+                }
+            })
             .iter()
             .map(|m| {
                 let role = match m.cause.as_str() {
@@ -54,7 +63,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                             format!(
                                 "{}: {}",
                                 m.sender.clone().unwrap(),
-                                text.strip_prefix("/oleg").map_or(&text[..], |s| s.trim()),
+                                text.strip_prefix(crate::BOT_COMMAND_PREFIX).map_or(&text[..], |s| s.trim()),
                             )
                         }),
                         ChatCompletionMessageRole::Function => {
@@ -77,14 +86,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
 
     println!("{messages:#?}");
 
-    let functions = [
-        oleg_command::GetTime::desc(),
-        oleg_command::Translate::desc(),
-        oleg_command::Draw::desc(),
-        oleg_command::Recognize::desc(),
-        oleg_command::Search::desc(),
-        oleg_command::ExchangeRates::desc(),
-    ];
+    let functions = &*FUNCTION_DESCS;
     let completion = ChatCompletion::builder("gpt-3.5-turbo-0613", messages.clone())
         .functions(functions.clone())
         .create()
@@ -125,13 +127,15 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
             .await
         }
         "translate" => {
-            let args: serde_json::Value =
+            let func_args: serde_json::Value =
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::Translate::execute(oleg_command::translate::Args {
                 bot,
                 msg,
-                to_language: args["to_language"].as_str().unwrap_or_default(),
-                text: args["text"].as_str().unwrap_or_default(),
+                to_language: func_args["to_language"].as_str().unwrap_or_default(),
+                text: func_args["text"].as_str().unwrap_or_default(),
+                translator: &args.translator,
+                settings: &args.settings,
             })
             .await
         }
@@ -145,6 +149,9 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 db: args.db.clone(),
                 description: cmd_args["description"].as_str().unwrap_or_default(),
                 nsfw: cmd_args["nsfw"].as_bool().unwrap_or_default(),
+                http_client: &args.http_client,
+                translator: &args.translator,
+                settings: &args.settings,
             })
             .await
         }
@@ -157,6 +164,8 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 msg,
                 db: args.db.clone(),
                 file_id: cmd_args["file_id"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
+                settings: &args.settings,
             })
             .await
         }
@@ -165,6 +174,8 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::Search::execute(oleg_command::search::Args {
                 query: cmd_args["query"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
+                settings: &args.settings,
             })
             .await
         }
@@ -173,6 +184,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
                 serde_json::from_str(&function.arguments).unwrap_or_default();
             oleg_command::ExchangeRates::execute(oleg_command::exchange_rates::Args {
                 base: cmd_args["base"].as_str().unwrap_or_default(),
+                http_client: &args.http_client,
             })
             .await
         }
@@ -193,7 +205,7 @@ async fn get_answer(bot: &Bot, msg: &Message, args: &Args) -> Result<Option<Mess
 #[async_trait]
 impl super::Command<Args> for Oleg {
     async fn execute(bot: Bot, msg: Message, args: Args) {
-        openai::set_key(std::env::var("OPENAI_TOKEN").expect("OpenAI api key is missing"));
+        openai::set_key(args.settings.openai_token.clone());
 
         let mut max_iter = 5;
 

@@ -1,15 +1,20 @@
-use super::core::*;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use teloxide::{prelude::*, types::InputFile};
 use tokio::sync::Mutex;
+
+use super::core::*;
 
 pub struct Sd;
 
 pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub description: String,
+    pub http_client: reqwest::Client,
+    pub translator: Arc<crate::Translator>,
+    pub settings: Arc<crate::Settings>,
 }
 
 #[async_trait]
@@ -19,6 +24,9 @@ impl super::Command<Args> for Sd {
             instance: args.sd_draw.clone(),
             description: &args.description,
             msg: &msg,
+            http_client: &args.http_client,
+            translator: &args.translator,
+            settings: &args.settings,
         })
         .await
         {

@@ -1,18 +1,22 @@
-use super::core::*;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
 
+use super::core::*;
+
 pub struct What;
 
-pub struct Args {
-    pub db: Arc<Mutex<crate::DB>>,
+pub struct Args<'a> {
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
+    pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
-impl super::Command<Args> for What {
-    async fn execute(bot: Bot, msg: Message, args: Args) {
+impl<'a> super::Command<Args<'a>> for What {
+    async fn execute(bot: Bot, msg: Message, args: Args<'a>) {
         let msg = msg
             .photo()
             .and(Some(&msg))
@@ -24,9 +28,9 @@ impl super::Command<Args> for What {
         match SdWhat::execute(sd_what::Args {
             db: args.db,
             bot: bot.clone(),
-            file_id: msg
-                .photo()
-                .and_then(|p| p.last().map(|p| p.file.id.clone())),
+            file_id: msg.photo().and_then(|p| p.last().map(|p| &p.file.id[..])),
+            http_client: args.http_client,
+            settings: args.settings,
         })
         .await
         {

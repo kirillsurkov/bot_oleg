@@ -1,3 +1,7 @@
+use once_cell::sync::Lazy;
+
+use crate::ext::MessageExt;
+
 #[derive(Clone)]
 pub struct FunctionReq {
     pub name: String,
@@ -52,11 +56,12 @@ pub struct DB {
 }
 
 impl DB {
-    pub fn new() -> Self {
-        let connection = sqlite::open("DB.db").unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS messages(
+    pub fn new() -> Lazy<Self> {
+        Lazy::new(|| {
+            let connection = sqlite::open("DB.db").unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS messages(
                     chat_id INTEGER,
                     msg_id INTEGER,
                     cause TEXT,
@@ -67,19 +72,19 @@ impl DB {
                     text TEXT,
                     PRIMARY KEY(chat_id, msg_id)
                 )",
-            )
-            .unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS captions(
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS captions(
                     file_id TEXT PRIMARY KEY,
                     caption TEXT
                 )",
-            )
-            .unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS functions(
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS functions(
                     id INTEGER PRIMARY KEY,
                     chat_id INTEGER,
                     msg_id INTEGER,
@@ -87,9 +92,10 @@ impl DB {
                     req TEXT,
                     res TEXT
                 )",
-            )
-            .unwrap();
-        Self { connection }
+                )
+                .unwrap();
+            Self { connection }
+        })
     }
 
     pub fn add_message(&self, cause: &str, msg: &teloxide::types::Message) {
@@ -117,7 +123,7 @@ impl DB {
         statement
             .bind((7, msg.from().map(|u| u.full_name()).as_deref()))
             .unwrap();
-        statement.bind((8, msg.text().or(msg.caption()))).unwrap();
+        statement.bind((8, msg.text_or_caption())).unwrap();
         statement.next().unwrap();
 
         if let Some(photo) = msg.photo().and_then(|p| p.last()) {
@@ -188,6 +194,13 @@ impl DB {
     }
 
     pub fn get_functions(&self, chat_id: i64, msg_id: i32) -> Vec<DBMessage> {
+        fn is_valid_name(s: &str) -> bool {
+            (1..=64).contains(&s.len())
+                && s.as_bytes()
+                    .iter()
+                    .all(|&ch| ch.is_ascii_alphanumeric() || ch == b'-' || ch == b'_')
+        }
+
         let mut statement = self
             .connection
             .prepare("SELECT * FROM functions WHERE chat_id=? and msg_id=? ORDER BY id DESC")
@@ -195,10 +208,9 @@ impl DB {
         statement.bind((1, chat_id)).unwrap();
         statement.bind((2, msg_id as i64)).unwrap();
         let mut functions = vec![];
-        let re = regex::Regex::new(r"^[a-zA-Z0-9_-]{1,64}$").unwrap();
         while let Ok(sqlite::State::Row) = statement.next() {
             let name = statement.read::<String, _>("name").unwrap();
-            if !re.is_match(&name) {
+            if !is_valid_name(&name) {
                 continue;
             }
             let req = statement.read::<String, _>("req").map(|r| FunctionReq {
@@ -248,7 +260,7 @@ impl DB {
             .to_owned()
         };
 
-        if let Some(text) = msg.text().or(msg.caption()) {
+        if let Some(text) = msg.text_or_caption() {
             let text = text_with_id(
                 msg.photo()
                     .and_then(|p| p.last())

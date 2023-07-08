@@ -6,39 +6,25 @@ pub struct GoogleTranslate;
 pub struct Args<'a> {
     pub to_language: &'a str,
     pub text: &'a str,
+    pub translator: &'a crate::Translator,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
 impl<'a> super::Core<Args<'a>, anyhow::Result<String>> for GoogleTranslate {
     async fn execute(args: Args<'a>) -> anyhow::Result<String> {
         use google_translate3::api::TranslateTextRequest;
-        use google_translate3::{hyper, hyper_rustls, oauth2, Translate};
+        use google_translate3::oauth2;
 
-        let google_account = std::env::var("GOOGLE_SERVICE_ACCOUNT_JSON")
-            .expect("Google service account JSON is missing");
+        let google_account = &args.settings.google_service_account_json;
         let service_account_key =
             oauth2::read_service_account_key(format!("./res/{google_account}",))
                 .await
                 .unwrap();
         let project_id = service_account_key.project_id.clone().unwrap();
-        let auth = oauth2::ServiceAccountAuthenticator::builder(service_account_key)
-            .build()
-            .await
-            .unwrap();
 
-        let hub = Translate::new(
-            hyper::Client::builder().build(
-                hyper_rustls::HttpsConnectorBuilder::new()
-                    .with_native_roots()
-                    .https_or_http()
-                    .enable_http1()
-                    .enable_http2()
-                    .build(),
-            ),
-            auth,
-        );
-
-        let (_, result) = hub
+        let (_, result) = args
+            .translator
             .projects()
             .locations_translate_text(
                 TranslateTextRequest {

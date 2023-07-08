@@ -8,6 +8,7 @@ pub struct ExchangeRates;
 
 pub struct Args<'a> {
     pub base: &'a str,
+    pub http_client: &'a reqwest::Client,
 }
 
 #[async_trait]
@@ -30,11 +31,15 @@ impl<'a> OlegCommand<Args<'a>> for ExchangeRates {
     }
 
     async fn execute(args: Args<'a>) -> (Option<Message>, Option<String>) {
+        let Args { base, http_client } = args;
         (
             None,
             Some(
-                match CurrencyExchangeRate::execute(currency_exchangerate::Args { base: args.base })
-                    .await
+                match CurrencyExchangeRate::execute(currency_exchangerate::Args {
+                    base,
+                    http_client,
+                })
+                .await
                 {
                     Ok(response) => serde_json::to_string(&response).unwrap(),
                     Err(err) => format!("Get exchange rates failed:\n{err:#}"),

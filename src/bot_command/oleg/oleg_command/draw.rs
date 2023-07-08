@@ -1,10 +1,12 @@
-use super::OlegCommand;
-use crate::bot_command::core::*;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use openai::chat::*;
 use std::sync::Arc;
 use teloxide::{prelude::*, types::InputFile};
 use tokio::sync::Mutex;
+
+use super::OlegCommand;
+use crate::bot_command::core::*;
 
 pub struct Draw;
 
@@ -12,9 +14,12 @@ pub struct Args<'a> {
     pub bot: &'a Bot,
     pub msg: &'a Message,
     pub sd_draw: Arc<Mutex<SdDraw>>,
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub description: &'a str,
     pub nsfw: bool,
+    pub http_client: &'a reqwest::Client,
+    pub translator: &'a crate::Translator,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -45,6 +50,9 @@ impl<'a> OlegCommand<Args<'a>> for Draw {
             instance: args.sd_draw.clone(),
             description: args.description,
             msg: args.msg,
+            http_client: args.http_client,
+            translator: args.translator,
+            settings: args.settings,
         })
         .await
         {

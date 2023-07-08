@@ -1,18 +1,22 @@
-use super::OlegCommand;
-use crate::bot_command::core::*;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use openai::chat::*;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
+
+use super::OlegCommand;
+use crate::bot_command::core::*;
 
 pub struct Recognize;
 
 pub struct Args<'a> {
     pub bot: &'a Bot,
     pub msg: &'a Message,
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub file_id: &'a str,
+    pub http_client: &'a reqwest::Client,
+    pub settings: &'a crate::Settings,
 }
 
 #[async_trait]
@@ -41,7 +45,9 @@ impl<'a> OlegCommand<Args<'a>> for Recognize {
                 match SdWhat::execute(sd_what::Args {
                     db: args.db,
                     bot: args.bot.clone(),
-                    file_id: Some(args.file_id.to_owned()),
+                    file_id: Some(args.file_id),
+                    http_client: args.http_client,
+                    settings: args.settings,
                 })
                 .await
                 {
