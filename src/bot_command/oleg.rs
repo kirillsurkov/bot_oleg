@@ -13,7 +13,7 @@ pub struct Oleg;
 
 pub struct Args {
     pub sd_draw: Arc<Mutex<super::core::SdDraw>>,
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub http_client: reqwest::Client,
     pub translator: Arc<crate::Translator>,
     pub settings: Arc<crate::Settings>,

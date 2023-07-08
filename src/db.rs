@@ -1,3 +1,5 @@
+use once_cell::sync::Lazy;
+
 use crate::ext::MessageExt;
 
 #[derive(Clone)]
@@ -54,11 +56,12 @@ pub struct DB {
 }
 
 impl DB {
-    pub fn new() -> Self {
-        let connection = sqlite::open("DB.db").unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS messages(
+    pub fn new() -> Lazy<Self> {
+        Lazy::new(|| {
+            let connection = sqlite::open("DB.db").unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS messages(
                     chat_id INTEGER,
                     msg_id INTEGER,
                     cause TEXT,
@@ -69,19 +72,19 @@ impl DB {
                     text TEXT,
                     PRIMARY KEY(chat_id, msg_id)
                 )",
-            )
-            .unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS captions(
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS captions(
                     file_id TEXT PRIMARY KEY,
                     caption TEXT
                 )",
-            )
-            .unwrap();
-        connection
-            .execute(
-                "CREATE TABLE IF NOT EXISTS functions(
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "CREATE TABLE IF NOT EXISTS functions(
                     id INTEGER PRIMARY KEY,
                     chat_id INTEGER,
                     msg_id INTEGER,
@@ -89,9 +92,10 @@ impl DB {
                     req TEXT,
                     res TEXT
                 )",
-            )
-            .unwrap();
-        Self { connection }
+                )
+                .unwrap();
+            Self { connection }
+        })
     }
 
     pub fn add_message(&self, cause: &str, msg: &teloxide::types::Message) {

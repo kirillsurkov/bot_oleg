@@ -1,13 +1,15 @@
-use super::core::*;
 use async_trait::async_trait;
+use once_cell::sync::Lazy;
 use std::sync::Arc;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
 
+use super::core::*;
+
 pub struct What;
 
 pub struct Args<'a> {
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub http_client: &'a reqwest::Client,
     pub settings: &'a crate::Settings,
 }

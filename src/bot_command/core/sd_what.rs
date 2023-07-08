@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use base64::Engine;
+use once_cell::sync::Lazy;
 use teloxide::{net::Download, prelude::*};
 use tokio::sync::Mutex;
 
@@ -9,7 +10,7 @@ use std::sync::Arc;
 pub struct SdWhat;
 
 pub struct Args<'a> {
-    pub db: Arc<Mutex<crate::DB>>,
+    pub db: Arc<Mutex<Lazy<crate::DB>>>,
     pub bot: Bot,
     pub file_id: Option<&'a str>,
     pub http_client: &'a reqwest::Client,
